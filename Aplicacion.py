@@ -29,7 +29,7 @@ connection = pymysql.connect(
 # --- Configuración de Idiomas ---
 
 # Idioma actual de la aplicación. Por defecto: español.
-idioma_actual = 'es' # Usaremos 'es' o 'en' como códigos de idioma directamente
+idioma_actual = 'es' # Usaremos códigos de idioma de googletrans (ej. 'es', 'en', 'fr', 'zh-cn', 'de')
 translator = Translator() # Inicializa el traductor globalmente
 
 def T(text_to_translate, *args):
@@ -214,11 +214,17 @@ def actualizar_idioma(nuevo_idioma_seleccionado):
     Cambia el idioma global y reconstruye la interfaz actual para aplicar los cambios.
     """
     global idioma_actual
-    # Mapea el texto del ComboBox a la clave del diccionario.
+    # Mapea el texto del ComboBox a la clave del código de idioma de googletrans.
     if nuevo_idioma_seleccionado == "Español":
         idioma_actual = 'es'
-    elif nuevo_idioma_seleccionado == "English":
-        idioma_actual = 'en'
+    elif nuevo_idioma_seleccionado == "Inglés (Británico)":
+        idioma_actual = 'en' # googletrans usa 'en' para inglés general
+    elif nuevo_idioma_seleccionado == "Francés":
+        idioma_actual = 'fr'
+    elif nuevo_idioma_seleccionado == "Chino":
+        idioma_actual = 'zh-cn' # chino simplificado
+    elif nuevo_idioma_seleccionado == "Alemán":
+        idioma_actual = 'de'
     
     print(f"Idioma cambiado a: {idioma_actual}")
     reconstruir_interfaz_actual()
@@ -799,11 +805,19 @@ def interfaz_configuracion():
     idioma_label = CTkLabel(main_content_frame, text=T("Seleccionar Idioma:"), font=('sans serif', 14), text_color="white")
     idioma_label.grid(row=2, column=0, sticky='w', padx=10, pady=(20, 5))
 
-    # Determinar el valor inicial del ComboBox según el idioma actual.
-    initial_language_display = "Español" if idioma_actual == 'es' else "English"
+    # Mapeo inverso de códigos de idioma a nombres de visualización para la inicialización
+    lang_display_map = {
+        'es': "Español",
+        'en': "Inglés (Estadounidense)", # Se asume US English como predeterminado si es 'en'
+        'fr': "Francés",
+        'zh-cn': "Chino",
+        'de': "Alemán"
+    }
+    initial_language_display = lang_display_map.get(idioma_actual, "Español")
+
 
     idioma_combobox = CTkComboBox(main_content_frame, 
-                                  values=["Español", "English"],
+                                  values=["Español", "Inglés (Británico)", "Francés", "Chino", "Alemán"],
                                   command=actualizar_idioma,
                                   font=('sans serif', 12),
                                   fg_color="#3B3B3B",
