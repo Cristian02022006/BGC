@@ -7,10 +7,10 @@ import threading
 import mysql.connector
 
 # ------------ CONFIGURA ESTOS DATOS CON LOS TUYOS --------------------
-AWS_ENDPOINT = ""   # Coloca el endpoint que te proporciona AWS para tu base de datos RDS
-MYSQL_USER = "admin"
-MYSQL_PASSWORD = ""   # Coloca la contraseña de tu usuario MySQL
-MYSQL_DATABASE = ""   # Coloca el nombre de tu base de datos MySQL
+AWS_ENDPOINT = "database-proyecto-prueba.cdye4eomwbfz.us-east-2.rds.amazonaws.com"   # Coloca el endpoint que te proporciona AWS para tu base de datos RDS
+MYSQL_USER = "cris"
+MYSQL_PASSWORD = "crisvg06."   # Coloca la contraseña de tu usuario MySQL
+MYSQL_DATABASE = "database-proyecto-prueba"   # Coloca el nombre de tu base de datos MySQL
 INTERFAZ_RED = "Wi-Fi"   # ¡IMPORTANTE! Cambia esto según el nombre de tu adaptador de red (ej. "Ethernet", "Wi-Fi", "eth0", "wlan0")
 # ---------------------------------------------------------------------
 
