@@ -6,6 +6,7 @@ from plyer import notification
 import threading
 import mysql.connector
 import pymysql
+from googletrans import Translator 
 
 # ------------ CONFIGURA ESTOS DATOS CON LOS TUYOS --------------------
 AWS_ENDPOINT = "database-proyecto-prueba.cdye4eomwbfz.us-east-2.rds.amazonaws.com"   # Coloca el endpoint que te proporciona AWS para tu base de datos RDS
@@ -26,94 +27,22 @@ connection = pymysql.connect(
 # ---------------------------------------------------------------------
 
 # --- Configuración de Idiomas ---
-# Diccionario de traducciones para los textos de la interfaz.
-# Puedes añadir más idiomas y claves según sea necesario.
-TRADUCCIONES = {
-    'es': {
-        'menu': "Menú",
-        'principal': "Principal",
-        'usuario': "Usuario",
-        'historial': "Historial",
-        'soporte': "Soporte",
-        'configuracion': "Configuración",
-        'notificaciones': "Notificaciones",
-        'administrador': "Administrador",
-        'anomalia_detectada': "Anomalía detectada",
-        'usuario_o_contrasena_incorrectos': "Usuario o contraseña incorrectos. Por favor, intenta de nuevo.",
-        'analisis_de_red': "Análisis de Red",
-        'iniciar_sesion': "INICIAR SESIÓN",
-        'usuario_placeholder': "Usuario",
-        'contrasena_placeholder': "Contraseña",
-        'historial_anomalias': "Historial de Anomalías",
-        'buscar_placeholder': "Buscar...",
-        'eliminar_historial': "ELIMINAR HISTORIAL",
-        'error_cargar_historial': "Error al cargar historial: {}\nVerifica tus credenciales y endpoint de AWS.",
-        'no_anomalias_registradas': "No hay anomalías registradas.",
-        'soporte_tecnico': "Soporte Técnico",
-        'contacto_soporte': "Para soporte, contacte a:",
-        'email_soporte': "Email: support@bgc.com",
-        'telefono_soporte': "Teléfono: +52 123 456 7890",
-        'configuracion_sistema': "Configuración del Sistema",
-        'ajustes_desc': "Aquí podrás ajustar diversas configuraciones.",
-        'seleccionar_idioma': "Seleccionar Idioma:",
-        'protocolo_inusual': "Protocolo inusual: {}",
-        'anomalia_guardada': "Anomalía guardada: {} de {} a {}",
-        'error_guardar_anomalia': "Error al guardar anomalía en MySQL: {}",
-        'error_monitoreo_red': "Error durante el monitoreo de red: {}",
-        'error_cargar_logo': "Error al cargar logo o icono: {}",
-        'error_crear_ico': "Error al crear ICO desde PNG: {}",
-        'error_cargar_campana': "Error al cargar el ícono de campana: {}",
-        'error_cargar_imagen_usuario': "Error al cargar imagen de usuario: {}",
-    },
-    'en': {
-        'menu': "Menu",
-        'principal': "Main",
-        'usuario': "User",
-        'historial': "History",
-        'soporte': "Support",
-        'configuracion': "Settings",
-        'notificaciones': "Notifications",
-        'administrador': "Administrator",
-        'anomalia_detectada': "Anomaly Detected",
-        'usuario_o_contrasena_incorrectos': "Incorrect username or password. Please try again.",
-        'analisis_de_red': "Network Analysis",
-        'iniciar_sesion': "LOG IN",
-        'usuario_placeholder': "Username",
-        'contrasena_placeholder': "Password",
-        'historial_anomalias': "Anomaly History",
-        'buscar_placeholder': "Search...",
-        'eliminar_historial': "DELETE HISTORY",
-        'error_cargar_historial': "Error loading history: {}\nPlease check your AWS credentials and endpoint.",
-        'no_anomalias_registradas': "No anomalies recorded.",
-        'soporte_tecnico': "Technical Support",
-        'contacto_soporte': "For support, please contact:",
-        'email_soporte': "Email: support@bgc.com",
-        'telefono_soporte': "Phone: +52 123 456 7890",
-        'configuracion_sistema': "System Settings",
-        'ajustes_desc': "Here you can adjust various settings.",
-        'seleccionar_idioma': "Select Language:",
-        'protocolo_inusual': "Unusual protocol: {}",
-        'anomalia_guardada': "Anomaly saved: {} from {} to {}",
-        'error_guardar_anomalia': "Error saving anomaly to MySQL: {}",
-        'error_monitoreo_red': "Error during network monitoring: {}",
-        'error_cargar_logo': "Error loading logo or icon: {}",
-        'error_crear_ico': "Error creating ICO from PNG: {}",
-        'error_cargar_campana': "Error loading bell icon: {}",
-        'error_cargar_imagen_usuario': "Error loading user image: {}",
-    }
-}
 
 # Idioma actual de la aplicación. Por defecto: español.
-idioma_actual = 'es'
+idioma_actual = 'es' # Usaremos 'es' o 'en' como códigos de idioma directamente
+translator = Translator() # Inicializa el traductor globalmente
 
-def T(key, *args):
+def T(text_to_translate, *args):
     """
-    Función de traducción: devuelve el texto correspondiente a la clave
-    en el idioma actual. Permite formatear cadenas con argumentos.
+    Función de traducción: ahora traduce el texto directamente usando googletrans.
+    Se asume que 'text_to_translate' es el texto original en español.
     """
-    text = TRADUCCIONES.get(idioma_actual, {}).get(key, key) # Si no encuentra, devuelve la clave.
-    return text.format(*args) if args else text
-
+    try:
+        translated_text = translator.translate(text_to_translate, dest=idioma_actual, src='es').text
+        return translated_text.format(*args) if args else translated_text
+    except Exception as e:
+        print(f"Error al traducir '{text_to_translate}' con googletrans: {e}. Se devuelve el texto original.")
+        return text_to_translate.format(*args) if args else text_to_translate # Devuelve el texto original en caso de error
 # Diccionario global para mantener referencias a los diferentes frames de la aplicación.
 app_frames = {}
 # Variable para mantener una referencia al frame actual visible.
@@ -133,27 +62,38 @@ def guardar_anomalia(mensaje, origen, destino):
             database=MYSQL_DATABASE
         )
         cursor = conexion.cursor()
-        # Crea la tabla 'eventos' si no existe.
-        cursor.execute('''CREATE TABLE anomalias (
-                    id_anomalia INT PRIMARY KEY,
-                    tipo_anomalia VARCHAR(20) NOT NULL,
-                    timestamp DATETIME NOT NULL,
+        # Se asegura de que la tabla 'anomalias' exista con las columnas correctas.
+        cursor.execute('''CREATE TABLE IF NOT EXISTS anomalias (
+                    id_anomalia INT AUTO_INCREMENT PRIMARY KEY,
+                    tipo_anomalia VARCHAR(50) NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                     descripcion TEXT NOT NULL,
-                    severidad VARCHAR (15) NOT NULL,
-                    id_usuario INT, 
-                    FOREIGN KEY (id_usuario) references usuario (id_usuario)
+                    severidad VARCHAR(15) NOT NULL,
+                    origen_ip VARCHAR(45),
+                    destino_ip VARCHAR(45),
+                    id_usuario INT,
+                    FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
                     ON DELETE CASCADE
                     ON UPDATE SET NULL
                     );''')
-        # Inserta la anomalía en la tabla.
+
+        # Traduce el tipo de anomalía y la descripción a inglés para un almacenamiento consistente.
+        # Aquí 'mensaje' es la descripción detallada de la anomalía (ej. "Protocolo inusual: TCP")
+        # El texto original para la DB debe ser siempre el mismo para una traducción consistente.
+        db_tipo_anomalia = translator.translate("Protocolo Inusual", dest='en', src='es').text # Siempre traduce "Protocolo Inusual" de español a inglés
+        db_descripcion = translator.translate(mensaje, dest='en', src='es').text # Traduce el mensaje de la anomalía de español a inglés
+
+        db_severidad = "Mediana" # Ejemplo de severidad
+        db_id_usuario = None # O un ID de usuario específico si se implementa la gestión de usuarios
+
         cursor.execute(
-            "INSERT INTO anomalia (mensaje, origen, destino) VALUES (%s, %s, %s)",
-            (mensaje, origen, destino)
+            "INSERT INTO anomalias (tipo_anomalia, descripcion, severidad, origen_ip, destino_ip, id_usuario) VALUES (%s, %s, %s, %s, %s, %s)",
+            (db_tipo_anomalia, db_descripcion, db_severidad, origen, destino, db_id_usuario)
         )
         conexion.commit() # Confirma la transacción.
-        print(T("anomalia_guardada", mensaje, origen, destino))
+        print(T("Anomalía guardada: {} de {} a {}", mensaje, origen, destino)) # Usamos T() para traducir el mensaje de confirmación
     except mysql.connector.Error as err:
-        print(T("error_guardar_anomalia", err))
+        print(T("Error al guardar anomalía en MySQL: {}", err)) # Usamos T() para traducir el mensaje de error
     finally:
         # Asegura que la conexión a la base de datos se cierre correctamente.
         if 'conexion' in locals() and conexion.is_connected():
@@ -174,7 +114,9 @@ def es_anomalia(pkt):
             dst = pkt.ip.dst # Dirección IP de destino.
             # Define una lista de protocolos "normales".
             if protocolo not in ['TCP', 'UDP', 'DNS', 'ICMP']:
-                return T("protocolo_inusual", protocolo), src, dst
+                # El mensaje retornado aquí estará en el idioma actual de la aplicación.
+                # Será traducido a inglés antes de guardarse en la DB.
+                return T("Protocolo inusual: {}", protocolo), src, dst # Usamos T() para traducir
         return None # No es una anomalía o el paquete no tiene capa IP.
     except AttributeError:
         # Maneja casos donde una capa o atributo esperado no existe en el paquete.
@@ -248,8 +190,9 @@ def reconstruir_interfaz_actual():
     """
     if current_active_frame_name:
         # Destruir el frame actual para forzar su recreación con el nuevo idioma
-        app_frames[current_active_frame_name].destroy()
-        del app_frames[current_active_frame_name] # Eliminar la referencia antigua
+        if current_active_frame_name in app_frames:
+            app_frames[current_active_frame_name].destroy()
+            del app_frames[current_active_frame_name] # Eliminar la referencia antigua
 
         # Reconstruye según el frame activo
         if current_active_frame_name == "principal":
@@ -263,8 +206,8 @@ def reconstruir_interfaz_actual():
         elif current_active_frame_name == "configuracion":
             interfaz_configuracion()
 
-        # Después de recrear, mostrar el frame nuevamente
-        app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
+        if current_active_frame_name in app_frames:
+            app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
 
 def actualizar_idioma(nuevo_idioma_seleccionado):
     """
@@ -282,8 +225,10 @@ def actualizar_idioma(nuevo_idioma_seleccionado):
 
     # Destruir todas las interfaces actuales
     for frame_name in list(app_frames.keys()):
-        app_frames[frame_name].destroy()
-        del app_frames[frame_name]
+        if frame_name != "login": # No destruir el frame de login
+            if frame_name in app_frames:
+                app_frames[frame_name].destroy()
+                del app_frames[frame_name]
 
     # Crear todas las interfaces
     interfaz_principal()
@@ -295,8 +240,11 @@ def actualizar_idioma(nuevo_idioma_seleccionado):
     # Mostrar la interfaz activa en la que se está, o mostrar la de configuracion
     if current_active_frame_name in app_frames:
         app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew')
+        if current_active_frame_name == "historial":
+            if hasattr(app_frames["historial"], 'load_events'):
+                app_frames["historial"].load_events()
     else:
-        show_frame("configuracion")
+        show_frame("principal")
 
 # --- Interfaz de Inicio de Sesión ---
 def iniciar_sesion():
@@ -304,8 +252,7 @@ def iniciar_sesion():
     MODIFICADO: Esta función ahora directamente cambia a la interfaz principal de la aplicación
     y lanza el monitoreo de red, sin validar usuario ni contraseña.
     """
-    # Inicializa las otras interfaces si no están ya en app_frames
-    # Esto es importante porque `show_frame` las espera en el diccionario
+    # Inicializar otras interfaces si no están ya en app_frames
     if "principal" not in app_frames:
         interfaz_principal()
     if "usuario" not in app_frames:
@@ -318,6 +265,32 @@ def iniciar_sesion():
         interfaz_configuracion()
 
     show_frame("principal") # Cambia a la interfaz principal.
+
+    if hasattr(app_frames["principal"], 'notif_frame'):
+        threading.Thread(target=iniciar_monitoreo_red, args=(app_frames["principal"].notif_frame,), daemon=True).start()
+    else:
+        print("Error: notif_frame no encontrado en principal_frame.")
+
+
+def iniciar_monitoreo_red(notif_frame):
+    """
+    Inicia la captura de paquetes de red y el monitoreo de anomalías.
+    Las notificaciones se agregarán al 'notif_frame' en la interfaz principal.
+    """
+    print("Iniciando monitoreo de red...")
+    try:
+        capture = pyshark.LiveCapture()
+        
+        for pkt in capture.sniff_continuously():
+            anomalia_info = es_anomalia(pkt)
+            if anomalia_info:
+                mensaje_anomalia, src_ip, dst_ip = anomalia_info
+                root.after(0, agregar_notificacion, notif_frame, f"{T('Anomalía detectada')}: {mensaje_anomalia} ({src_ip} -> {dst_ip})")
+                notificar_usuario(T('Anomalía detectada'), mensaje_anomalia)
+                guardar_anomalia(mensaje_anomalia, src_ip, dst_ip)
+
+    except Exception as e:
+        print(T("Error durante el monitoreo de red: {}", e))
 
 # ---------------- INTERFAZ DE PRINCIPAL ------------------------
 def interfaz_principal():
@@ -338,37 +311,37 @@ def interfaz_principal():
         logou_ctk = CTkImage(light_image=logou_image, dark_image=logou_image, size=(90, 90))
 
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/perfil.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/historial.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de historial:", e)
+        print(T("Error cargando icono de historial:", e))
 
     try:
         image = Image.open("Imagenes/soporte.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de soporte:", e)
+        print(T("Error cargando icono de soporte:", e))
 
     try:
         image = Image.open("Imagenes/config2.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     try:
         image = Image.open("Imagenes/home.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
 
     # Menú lateral (Sidebar)
@@ -381,11 +354,11 @@ def interfaz_principal():
     CTkLabel(menu_frame, text="Romero", font=('sans serif', 20, 'bold')).pack(pady=(20, 10))    
 
 # Botones del menú que usan `lambda` para llamar a `show_frame` con el nombre del frame correspondiente.
-    CTkButton(menu_frame, text=T('principal'), image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
-    CTkButton(menu_frame, text=T('usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
-    CTkButton(menu_frame, text=T('historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
-    CTkButton(menu_frame, text=T('soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
-    CTkButton(menu_frame, text=T('configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
+    CTkButton(menu_frame, text=T('Principal'), image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
+    CTkButton(menu_frame, text=T('Usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
+    CTkButton(menu_frame, text=T('Historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
+    CTkButton(menu_frame, text=T('Soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
+    CTkButton(menu_frame, text=T('Configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
 
     # Panel de Notificaciones (área principal donde se mostrarán las alertas)
     notif_frame = CTkFrame(principal_frame, fg_color="#121212")
@@ -401,14 +374,14 @@ def interfaz_principal():
     top_frame.grid(row=0, column=0, sticky='ew', pady=(0, 10))
     top_frame.columnconfigure(0, weight=1)
 
-    CTkLabel(top_frame, text=T("notificaciones"), font=("sans serif", 18)).grid(row=0, column=0, sticky='w', padx=10)
+    CTkLabel(top_frame, text=T("Notificaciones"), font=("sans serif", 18)).grid(row=0, column=0, sticky='w', padx=10)
 
     try:
         bell_icon = Image.open("Imagenes/campana2.png").resize((35, 35))
         bell_ctk = CTkImage(light_image=bell_icon, dark_image=bell_icon, size=(35, 35))
         CTkLabel(top_frame, image=bell_ctk, text="").grid(row=0, column=1, sticky='e', padx=10)
     except Exception as e:
-        print(T("error_cargar_campana", e))
+        print(T("Error al cargar el icono de campana: {}", e))
 
 
 # --- Interfaz de Usuario ---
@@ -434,37 +407,37 @@ def interfaz_usuario():
         logou_ctk = CTkImage(light_image=logou_image, dark_image=logou_image, size=(90, 90))
 
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/perfil.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/historial.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de historial:", e)
+        print(T("Error cargando icono de historial:", e))
 
     try:
         image = Image.open("Imagenes/soporte.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de soporte:", e)
+        print(T("Error cargando icono de soporte:", e))
 
     try:
         image = Image.open("Imagenes/config2.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     try:
         image = Image.open("Imagenes/home.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     label_usu = CTkLabel(master=sidebar, image=logou_ctk, text="")
     label_usu.pack(pady=(10, 0))  # Ajusta el margen según lo que necesites
@@ -473,11 +446,11 @@ def interfaz_usuario():
     CTkLabel(sidebar, text="Romero", font=('sans serif', 20, 'bold')).pack(pady=(20, 10))    
 
     # Botones del menú para navegar entre interfaces.
-    CTkButton(sidebar, text=T('principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
     # Contenido principal del frame de usuario.
     main_content_frame = CTkFrame(usuario_frame, fg_color="#010101")
     main_content_frame.grid(row=0, column=1, sticky='nsew', padx=40, pady=40)
@@ -491,11 +464,11 @@ def interfaz_usuario():
         perfil_ctk = CTkImage(light_image=img, dark_image=img, size=(100, 100))
         CTkLabel(main_content_frame, image=perfil_ctk, text="").grid(row=1, column=0, pady=(5, 10))
     except Exception as e:
-        print(T("error_cargar_imagen_usuario", e))
+        print(T("Error al cargar imagen de usuario: {}", e))
 
     CTkLabel(main_content_frame, text="Romero", font=('sans serif', 16), text_color="white").grid(row=2, column=0, pady=2)
     CTkLabel(main_content_frame, text="romero@example.com", font=('sans serif', 14), text_color="#AAAAAA").grid(row=3, column=0, pady=2)
-    CTkLabel(main_content_frame, text=T("administrador"), font=('sans serif', 14), text_color="#8de3e5").grid(row=4, column=0, pady=5)
+    CTkLabel(main_content_frame, text=T("Administrador"), font=('sans serif', 14), text_color="#8de3e5").grid(row=4, column=0, pady=5)
 
 
 # --- Interfaz de Historial ---
@@ -521,48 +494,48 @@ def interfaz_historial():
         logou_ctk = CTkImage(light_image=logou_image, dark_image=logou_image, size=(90, 90))
 
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
     
     try:
         image = Image.open("Imagenes/perfil.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/historial.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de historial:", e)
+        print(T("Error cargando icono de historial:", e))
 
     try:
         image = Image.open("Imagenes/soporte.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de soporte:", e)
+        print(T("Error cargando icono de soporte:", e))
 
     try:
         image = Image.open("Imagenes/config2.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     try:
         image = Image.open("Imagenes/home.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     label_usu = CTkLabel(master=sidebar, image=logou_ctk, text="")
     label_usu.pack(pady=(10, 0))  # Ajusta el margen según lo que necesites
 
     CTkLabel(sidebar, text="Romero", font=('sans serif', 20, 'bold')).pack(pady=(20, 10))    
    
-    CTkButton(sidebar, text=T('principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
 
     # Contenido principal del frame de historial.
     historial_content_frame = CTkFrame(historial_frame, fg_color="#010101")
@@ -572,13 +545,13 @@ def interfaz_historial():
 
     # Título
     CTkLabel(historial_content_frame,
-             text=T("historial_anomalias"),
+             text=T("Historial de Anomalías"),
              font=('sans serif', 20, 'bold'),
              text_color='#FFFFFF').grid(row=0, column=0, sticky='w', padx=10, pady=(0, 10))
 
     # Cuadro de búsqueda (funcionalidad no implementada, es solo visual).
     CTkEntry(historial_content_frame,
-             placeholder_text=T('buscar_placeholder'),
+             placeholder_text=T('Buscar...'),
              font=('sans serif', 12),
              border_color='#ffffff',
              fg_color="#3B3B3B",
@@ -607,29 +580,32 @@ def interfaz_historial():
             )
             cursor = conexion.cursor()
             # Selecciona las últimas 20 anomalías ordenadas por fecha/hora descendente.
-            cursor.execute("SELECT mensaje, origen, destino, timestamp FROM eventos ORDER BY timestamp DESC LIMIT 20")
-            eventos = cursor.fetchall()
+            cursor.execute("SELECT tipo_anomalia, timestamp, descripcion, severidad, origen_ip, destino_ip FROM anomalias ORDER BY timestamp DESC LIMIT 20")
+            anomalias = cursor.fetchall()
 
-            if not eventos:
+            if not anomalias:
                 CTkLabel(scroll_frame,
-                         text=T("no_anomalias_registradas"),
+                         text=T("No hay anomalías registradas."), # Texto directo para traducir
                          font=('sans serif', 12),
                          text_color='#DDDDDD').grid(row=0, column=0, sticky='w', pady=10, padx=10)
                 return
 
-            # Muestra cada evento en una etiqueta separada.
-            for idx, (mensaje, origen, destino, timestamp) in enumerate(eventos):
+            for idx, (tipo_anomalia_en, timestamp, descripcion_en, severidad, origen_ip, destino_ip) in enumerate(anomalias):
+                # Aquí, como los datos de la DB se guardan en inglés, los traducimos al idioma actual de la GUI
+                tipo_anomalia_traducida = translator.translate(tipo_anomalia_en, dest=idioma_actual, src='en').text
+                descripcion_traducida = translator.translate(descripcion_en, dest=idioma_actual, src='en').text
+
                 CTkLabel(scroll_frame,
-                         text=f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}]\n{mensaje}\n{origen} → {destino}",
+                         text=f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}]\n{tipo_anomalia_traducida} → {descripcion_traducida} (Origen: {origen_ip}, Destino: {destino_ip})",
                          font=('sans serif', 12),
                          text_color='#DDDDDD',
                          anchor='w',
                          justify='left',
-                         wraplength=scroll_frame._current_width - 20 # Ajusta el salto de línea.
+                         wraplength=scroll_frame._current_width - 20
                          ).grid(row=idx, column=0, sticky='w', pady=4, padx=10)
         except mysql.connector.Error as err:
             CTkLabel(scroll_frame,
-                     text=T("error_cargar_historial", err),
+                     text=T("Error al cargar historial: {}\nVerifica tus credenciales y endpoint de AWS.", err), # Texto directo para traducir
                      font=('sans serif', 12),
                      text_color='red').grid(row=0, column=0, sticky='w', pady=4, padx=10)
         finally:
@@ -648,7 +624,7 @@ def interfaz_historial():
 
     # Botón para eliminar el historial (funcionalidad pendiente de implementar).
     CTkButton(historial_content_frame,
-              text=T('eliminar_historial'),
+              text=T('ELIMINAR HISTORIAL'),
               font=('sans serif', 12),
               border_color="#890000", # Borde rojo.
               fg_color="#3B3B3B",
@@ -682,37 +658,37 @@ def interfaz_soporte():
         logou_ctk = CTkImage(light_image=logou_image, dark_image=logou_image, size=(90, 90))
 
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/perfil.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/historial.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de historial:", e)
+        print(T("Error cargando icono de historial:", e))
 
     try:
         image = Image.open("Imagenes/soporte.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de soporte:", e)
+        print(T("Error cargando icono de soporte:", e))
 
     try:
         image = Image.open("Imagenes/config2.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     try:
         image = Image.open("Imagenes/home.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     label_usu = CTkLabel(master=sidebar, image=logou_ctk, text="")
     label_usu.pack(pady=(10, 0))  # Ajusta el margen según lo que necesites
@@ -720,11 +696,11 @@ def interfaz_soporte():
 
     CTkLabel(sidebar, text="Romero", font=('sans serif', 20, 'bold')).pack(pady=(20, 10))    
 
-    CTkButton(sidebar, text=T('principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
     
 
     # Contenido principal del frame de soporte.
@@ -767,48 +743,48 @@ def interfaz_configuracion():
         logou_ctk = CTkImage(light_image=logou_image, dark_image=logou_image, size=(90, 90))
 
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/perfil.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de usuario:", e)
+        print(T("Error cargando icono de usuario:", e))
 
     try:
         image = Image.open("Imagenes/historial.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de historial:", e)
+        print(T("Error cargando icono de historial:", e))
 
     try:
         image = Image.open("Imagenes/soporte.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de soporte:", e)
+        print(T("Error cargando icono de soporte:", e))
 
     try:
         image = Image.open("Imagenes/config2.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     try:
         image = Image.open("Imagenes/home.png").resize((15, 15), Image.Resampling.LANCZOS)
         icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
     except Exception as e:
-        print("Error cargando icono de configuración:", e)
+        print(T("Error cargando icono de configuración:", e))
 
     label_usu = CTkLabel(master=sidebar, image=logou_ctk, text="")
     label_usu.pack(pady=(10, 0))  # Ajusta el margen según lo que necesites
 
     CTkLabel(sidebar, text="Romero", font=('sans serif', 20, 'bold')).pack(pady=(20, 10))    
     
-    CTkButton(sidebar, text=T('principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
-    CTkButton(sidebar, text=T('configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Historial'), image=icon_historial, compound="left", fg_color="#333333", command=lambda: show_frame("historial")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Soporte'), image=icon_soporte, compound="left", fg_color="#333333", command=lambda: show_frame("soporte")).pack(fill='x', padx=10, pady=5)
+    CTkButton(sidebar, text=T('Configuracion'), image=icon_configuracion, compound="left", fg_color="#333333", command=lambda: show_frame("configuracion")).pack(fill='x', padx=10, pady=5)
 
     # Contenido principal del frame de configuración.
     main_content_frame = CTkFrame(config_frame, fg_color="#010101")
@@ -816,11 +792,11 @@ def interfaz_configuracion():
     main_content_frame.columnconfigure(0, weight=1)
     main_content_frame.rowconfigure(3, weight=1) # Para que haya espacio si se añaden más opciones
 
-    CTkLabel(main_content_frame, text=T("configuracion_sistema"), font=('sans serif', 20, 'bold'), text_color="white").grid(row=0, column=0, pady=(10, 5))
-    CTkLabel(main_content_frame, text=T("ajustes_desc"), font=('sans serif', 14), text_color="#AAAAAA").grid(row=1, column=0, pady=5)
+    CTkLabel(main_content_frame, text=T("Configuración del Sistema"), font=('sans serif', 20, 'bold'), text_color="white").grid(row=0, column=0, pady=(10, 5))
+    CTkLabel(main_content_frame, text=T("Aquí podrás ajustar diversas configuraciones"), font=('sans serif', 14), text_color="#AAAAAA").grid(row=1, column=0, pady=5)
     
     # --- Opción de cambio de idioma ---
-    idioma_label = CTkLabel(main_content_frame, text=T("seleccionar_idioma"), font=('sans serif', 14), text_color="white")
+    idioma_label = CTkLabel(main_content_frame, text=T("Seleccionar Idioma:"), font=('sans serif', 14), text_color="white")
     idioma_label.grid(row=2, column=0, sticky='w', padx=10, pady=(20, 5))
 
     # Determinar el valor inicial del ComboBox según el idioma actual.
@@ -847,7 +823,7 @@ if __name__ == "__main__":
     root.geometry("500x600+350+20")
     root.minsize(480, 500)
     root.config(bg='#010101')
-    root.title("BGC - Análisis de Red")
+    root.title(T("BGC - Análisis de Red"))
 
     # Configuración de la grilla principal de la ventana
     root.grid_columnconfigure(0, weight=1)
@@ -879,14 +855,14 @@ if __name__ == "__main__":
         if os.path.exists(ico_path):
             root.iconbitmap(ico_path)
     except Exception as e:
-        print(T("error_cargar_logo", e)) # Usamos la traducción para el error
+        print(T("Error al cargar logo o icono: {}", e)) # Usamos la traducción para el error
         if "logo.ico" in str(e): # Si el error es específicamente por el .ico
-            print(T("error_crear_ico", e))
+            print(T("Error al crear ICO desde PNG: {}", e))
 
 
     # Campos de entrada para usuario y contraseña
     usuario_entry = CTkEntry(login_frame,
-                             placeholder_text=T('usuario_placeholder'),
+                             placeholder_text=T('Usuario'),
                              font=('sans serif', 12),
                              border_color='#ffffff',
                              fg_color="#3B3B3B",
@@ -896,7 +872,7 @@ if __name__ == "__main__":
 
     contrasenna_entry = CTkEntry(login_frame,
                                  show="*",
-                                 placeholder_text=T('contrasena_placeholder'),
+                                 placeholder_text=T('Contraseña'),
                                  font=('sans serif', 12),
                                  border_color='#ffffff',
                                  fg_color="#3B3B3B",
@@ -906,7 +882,7 @@ if __name__ == "__main__":
 
     # Botón de inicio de sesión
     bt_iniciar = CTkButton(login_frame,
-                           text=T('iniciar_sesion'),
+                           text=T('INICIAR SESIÓN'),
                            font=('sans serif', 12),
                            border_color='#ffffff',
                            fg_color='#3B3B3B',
