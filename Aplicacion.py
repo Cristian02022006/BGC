@@ -1,4 +1,4 @@
-from customtkinter import CTk, CTkFrame, CTkEntry, CTkLabel, CTkButton, CTkImage, CTkComboBox,CTkToplevel
+from customtkinter import CTk, CTkFrame, CTkEntry, CTkLabel, CTkButton, CTkImage, CTkComboBox,CTkToplevel,CTkScrollableFrame
 from PIL import Image
 import os
 import pyshark
@@ -601,11 +601,46 @@ def interfaz_historial():
     campo_busqueda.grid(row=1, column=0, sticky='w', padx=10, pady=(0, 10))
 
     # Área scrollable para mostrar eventos (idealmente usar CTkScrollableFrame para más items).
-    scroll_frame = CTkFrame(historial_content_frame, fg_color="#121212")
+    scroll_frame = CTkScrollableFrame(historial_content_frame, fg_color="#121212", width=600, height=400)
     scroll_frame.grid(row=2, column=0, sticky='nsew', padx=10, pady=10)
     scroll_frame.columnconfigure(0, weight=1)
 
-    def filtrar_eventos(query, scroll_frame):
+
+    campo_busqueda.bind("<KeyRelease>", lambda e: filtrar_eventos(campo_busqueda.get()))
+
+    def confirmar_eliminacion(id, query):
+        ventana = CTkToplevel(root)
+        ventana.title(T("eliminar_historial"))
+        CTkLabel(ventana, text=T("confirmar_eliminacion"), font=('sans serif', 13)).pack(pady=10)
+        CTkButton(ventana, text=T("Eliminar"), fg_color="#7b0000",
+                  command=lambda: (
+                      eliminar_evento(id),
+                      ventana.destroy(),
+                      filtrar_eventos(query)
+                  )).pack(pady=5)
+        CTkButton(ventana, text=T("Cancelar"), command=ventana.destroy).pack(pady=5)
+
+    def editar_evento(id, mensaje, origen, destino):
+        ventana = CTkToplevel(root)
+        ventana.title(T("editar_evento"))
+        mensaje_entry = CTkEntry(ventana, placeholder_text="Mensaje", text=mensaje)
+        origen_entry = CTkEntry(ventana, placeholder_text="Origen", text=origen)
+        destino_entry = CTkEntry(ventana, placeholder_text="Destino", text=destino)
+        mensaje_entry.pack(pady=5)
+        origen_entry.pack(pady=5)
+        destino_entry.pack(pady=5)
+
+        def guardar():
+            if not mensaje_entry.get().strip() or not origen_entry.get().strip() or not destino_entry.get().strip():
+                CTkLabel(ventana, text=T("Todos los campos son obligatorios"), text_color="red").pack()
+                return
+            actualizar_evento(id, mensaje_entry.get(), origen_entry.get(), destino_entry.get())
+            ventana.destroy()
+            filtrar_eventos(campo_busqueda.get())
+
+        CTkButton(ventana, text=T("guardar_cambios"), command=guardar).pack(pady=10)
+
+    def filtrar_eventos(query):
         for widget in scroll_frame.winfo_children():
             widget.destroy()
 
@@ -625,31 +660,17 @@ def interfaz_historial():
                      justify='left').grid(row=idx, column=0, sticky='w', padx=10, pady=4)
 
             CTkButton(scroll_frame, text="🗑", width=25,
-                      command=lambda i=id: eliminar_evento(i) or filtrar_eventos(query, scroll_frame)).grid(row=idx, column=1, padx=4)
+                      command=partial(confirmar_eliminacion, id, query)).grid(row=idx, column=1, padx=4)
 
             CTkButton(scroll_frame, text="✏️", width=25,
-                      command=lambda i=id, m=mensaje, o=origen, d=destino: editar_evento(i, m, o, d, scroll_frame, query)).grid(row=idx, column=2, padx=4)
+                      command=partial(editar_evento, id, mensaje, origen, destino)).grid(row=idx, column=2, padx=4)
 
-    def editar_evento(id, mensaje, origen, destino, scroll_frame, query_actual):
-        ventana = CTkToplevel(root)
-        ventana.title("Editar Evento")
+        # Muestra cuántos resultados se encontraron
+        CTkLabel(scroll_frame, text=f"{len(eventos)} eventos mostrados",
+                 font=('sans serif', 11), text_color="#AAAAAA").grid(row=idx + 1, column=0, sticky='w', padx=10, pady=(8, 4))
 
-        mensaje_entry = CTkEntry(ventana, placeholder_text="Mensaje", text=mensaje)
-        origen_entry = CTkEntry(ventana, placeholder_text="Origen", text=origen)
-        destino_entry = CTkEntry(ventana, placeholder_text="Destino", text=destino)
-
-        mensaje_entry.pack(pady=5)
-        origen_entry.pack(pady=5)
-        destino_entry.pack(pady=5)
-
-        CTkButton(ventana, text="Guardar cambios", command=lambda: (
-            actualizar_evento(id, mensaje_entry.get(), origen_entry.get(), destino_entry.get()),
-            ventana.destroy(),
-            filtrar_eventos(query_actual, scroll_frame)
-        )).pack(pady=10)
-
-    historial_frame.load_events = lambda: filtrar_eventos("", scroll_frame)
-    filtrar_eventos("", scroll_frame)
+    historial_frame.load_events = lambda: filtrar_eventos("")
+    filtrar_eventos("")
     # Botón para eliminar el historial (funcionalidad pendiente de implementar).
     CTkButton(historial_content_frame,
               text=T('eliminar_historial'),
