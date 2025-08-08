@@ -1,4 +1,4 @@
-from customtkinter import CTk, CTkFrame, CTkEntry, CTkLabel, CTkButton, CTkImage, CTkComboBox
+from customtkinter import CTk, CTkFrame, CTkEntry, CTkLabel, CTkButton, CTkImage, CTkComboBox,CTkToplevel
 from PIL import Image
 import os
 import pyshark
@@ -566,7 +566,7 @@ def interfaz_historial():
     except Exception as e:
         print("Error cargando icono de configuración:", e)
 
-    label_usu = CTkLabel(master=sidebar, image=logou_ctk, text="")
+    label_usu = CTkLabel(master=sidebar, image=CTkImage(Image.open("Imagenes/usu.png"), size=(90, 90)), text="")
     label_usu.pack(pady=(10, 0))  # Ajusta el margen según lo que necesites
 
     CTkLabel(sidebar, text="Romero", font=('sans serif', 20, 'bold')).pack(pady=(20, 10))    
@@ -590,75 +590,65 @@ def interfaz_historial():
              text_color='#FFFFFF').grid(row=0, column=0, sticky='w', padx=10, pady=(0, 10))
 
     # Cuadro de búsqueda (funcionalidad no implementada, es solo visual).
-    CTkEntry(historial_content_frame,
-             placeholder_text=T('buscar_placeholder'),
+    campo_busqueda=CTkEntry(historial_content_frame,
+             placeholder_text=T('Buscar'),
              font=('sans serif', 12),
              border_color='#ffffff',
              fg_color="#3B3B3B",
              width=300,
-             height=35).grid(row=1, column=0, sticky='w', padx=10, pady=(0, 10))
+             height=35)
+    campo_busqueda.grid(row=1, column=0, sticky='w', padx=10, pady=(0, 10))
 
     # Área scrollable para mostrar eventos (idealmente usar CTkScrollableFrame para más items).
     scroll_frame = CTkFrame(historial_content_frame, fg_color="#121212")
     scroll_frame.grid(row=2, column=0, sticky='nsew', padx=10, pady=10)
     scroll_frame.columnconfigure(0, weight=1)
 
-    def load_events():
-        """
-        Carga y muestra los eventos (anomalías) desde la base de datos MySQL.
-        """
-        # Limpia las etiquetas existentes en el scroll_frame antes de cargar nuevas.
+    def filtrar_eventos(query, scroll_frame):
         for widget in scroll_frame.winfo_children():
             widget.destroy()
 
-        try:
-            conexion = mysql.connector.connect(
-                host=AWS_ENDPOINT,
-                user=MYSQL_USER,
-                password=MYSQL_PASSWORD,
-                database=MYSQL_DATABASE
-            )
-            cursor = conexion.cursor()
-            # Selecciona las últimas 20 anomalías ordenadas por fecha/hora descendente.
-            cursor.execute("SELECT mensaje, origen, destino, timestamp FROM eventos ORDER BY timestamp DESC LIMIT 20")
-            eventos = cursor.fetchall()
+        eventos = obtener_eventos(filtro=query)
 
-            if not eventos:
-                CTkLabel(scroll_frame,
-                         text=T("no_anomalias_registradas"),
-                         font=('sans serif', 12),
-                         text_color='#DDDDDD').grid(row=0, column=0, sticky='w', pady=10, padx=10)
-                return
+        if not eventos:
+            CTkLabel(scroll_frame, text=T("no_anomalias_registradas"),
+                     font=('sans serif', 12), text_color="#DDDDDD").grid(row=0, column=0, sticky='w', padx=10, pady=10)
+            return
 
-            # Muestra cada evento en una etiqueta separada.
-            for idx, (mensaje, origen, destino, timestamp) in enumerate(eventos):
-                CTkLabel(scroll_frame,
-                         text=f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}]\n{mensaje}\n{origen} → {destino}",
-                         font=('sans serif', 12),
-                         text_color='#DDDDDD',
-                         anchor='w',
-                         justify='left',
-                         wraplength=scroll_frame._current_width - 20 # Ajusta el salto de línea.
-                         ).grid(row=idx, column=0, sticky='w', pady=4, padx=10)
-        except mysql.connector.Error as err:
-            CTkLabel(scroll_frame,
-                     text=T("error_cargar_historial", err),
+        for idx, (id, mensaje, origen, destino, timestamp) in enumerate(eventos):
+            texto = f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}]\n{mensaje}\n{origen} → {destino}"
+            CTkLabel(scroll_frame, text=texto,
                      font=('sans serif', 12),
-                     text_color='red').grid(row=0, column=0, sticky='w', pady=4, padx=10)
-        finally:
-            # Cierra el cursor y la conexión a la base de datos.
-            if 'cursor' in locals():
-                cursor.close()
-            if 'conexion' in locals() and conexion.is_connected():
-                conexion.close()
-    
-    # Asociar la función load_events al frame de historial para que reconstruir_interfaz_actual pueda llamarla.
-    historial_frame.load_events = load_events
+                     text_color="#DDDDDD",
+                     anchor='w',
+                     justify='left').grid(row=idx, column=0, sticky='w', padx=10, pady=4)
 
-    # Carga los eventos cuando se crea la interfaz de historial.
-    # En una aplicación real, esta función podría llamarse cada vez que se muestre el historial.
-    load_events()
+            CTkButton(scroll_frame, text="🗑", width=25,
+                      command=lambda i=id: eliminar_evento(i) or filtrar_eventos(query, scroll_frame)).grid(row=idx, column=1, padx=4)
 
+            CTkButton(scroll_frame, text="✏️", width=25,
+                      command=lambda i=id, m=mensaje, o=origen, d=destino: editar_evento(i, m, o, d, scroll_frame, query)).grid(row=idx, column=2, padx=4)
+
+    def editar_evento(id, mensaje, origen, destino, scroll_frame, query_actual):
+        ventana = CTkToplevel(root)
+        ventana.title("Editar Evento")
+
+        mensaje_entry = CTkEntry(ventana, placeholder_text="Mensaje", text=mensaje)
+        origen_entry = CTkEntry(ventana, placeholder_text="Origen", text=origen)
+        destino_entry = CTkEntry(ventana, placeholder_text="Destino", text=destino)
+
+        mensaje_entry.pack(pady=5)
+        origen_entry.pack(pady=5)
+        destino_entry.pack(pady=5)
+
+        CTkButton(ventana, text="Guardar cambios", command=lambda: (
+            actualizar_evento(id, mensaje_entry.get(), origen_entry.get(), destino_entry.get()),
+            ventana.destroy(),
+            filtrar_eventos(query_actual, scroll_frame)
+        )).pack(pady=10)
+
+    historial_frame.load_events = lambda: filtrar_eventos("", scroll_frame)
+    filtrar_eventos("", scroll_frame)
     # Botón para eliminar el historial (funcionalidad pendiente de implementar).
     CTkButton(historial_content_frame,
               text=T('eliminar_historial'),
