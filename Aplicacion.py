@@ -8,6 +8,7 @@ import mysql.connector
 
 # ------------ CONFIGURA ESTOS DATOS CON LOS TUYOS --------------------
 AWS_ENDPOINT = "database-proyecto-prueba.cdye4eomwbfz.us-east-2.rds.amazonaws.com"   # Coloca el endpoint que te proporciona AWS para tu base de datos RDS
+PORT="3306"
 MYSQL_USER = "cris"
 MYSQL_PASSWORD = "crisvg06."   # Coloca la contraseña de tu usuario MySQL
 MYSQL_DATABASE = "gestion_anomalias"   # Coloca el nombre de tu base de datos MySQL
