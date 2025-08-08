@@ -170,6 +170,33 @@ def es_anomalia(pkt):
         print(f"Error procesando paquete: {e}")
         return None
 
+def scapy_guardar_paquete(pkt):
+    if pkt.haslayer("IP"):
+        datos = {
+            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "src_ip": pkt["IP"].src,
+            "dst_ip": pkt["IP"].dst,
+            "protocol": pkt.proto,
+            "length": len(pkt)
+        }
+        try:
+            conexion = mysql.connector.connect(
+                host=AWS_ENDPOINT,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE
+            )
+            cursor = conexion.cursor()
+            cursor.execute("""
+                INSERT INTO paquetes (timestamp, src_ip, dst_ip, protocol, length)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (datos["timestamp"], datos["src_ip"], datos["dst_ip"], datos["protocol"], datos["length"]))
+            conexion.commit()
+            cursor.close()
+            conexion.close()
+        except Exception as e:
+            print(f"Error guardando paquete: {e}")
+
 def notificar_usuario(titulo, mensaje):
     """
     Muestra una notificación emergente en el sistema operativo del usuario.
@@ -237,6 +264,40 @@ def lanzar_monitor_red(notif_frame):
     
     # Inicia el hilo de monitoreo. `daemon=True` asegura que el hilo se cierre cuando la aplicación principal se cierre.
     threading.Thread(target=monitor, daemon=True).start()
+def lanzar_scapy_sniffer():
+    def run_sniffer():
+        sniff(prn=scapy_guardar_paquete, store=False)
+    threading.Thread(target=run_sniffer, daemon=True).start()
+
+def verificar_volumen_alertas(frame_destino):
+    def check():
+        while True:
+            try:
+                conexion = mysql.connector.connect(
+                    host=AWS_ENDPOINT,
+                    user=MYSQL_USER,
+                    password=MYSQL_PASSWORD,
+                    database=MYSQL_DATABASE
+                )
+                cursor = conexion.cursor()
+                cursor.execute("""
+                    SELECT src_ip, COUNT(*) AS total FROM paquetes
+                    WHERE timestamp >= NOW() - INTERVAL 1 MINUTE
+                    GROUP BY src_ip
+                    HAVING total > 50
+                """)
+                resultados = cursor.fetchall()
+                cursor.close()
+                conexion.close()
+                for ip, total in resultados:
+                    mensaje = f"🚨 IP {ip} generó {total} paquetes en el último minuto"
+                    root.after(0, agregar_notificacion, frame_destino, mensaje)
+                    notificar_usuario("Alerta de tráfico", mensaje)
+            except Exception as e:
+                print(f"Error verificando volumen de tráfico: {e}")
+            time.sleep(60)
+    threading.Thread(target=check, daemon=True).start()
+
 
 # --- Función para la Gestión de Frames (Interfaces) ---
 def show_frame(frame_name):
@@ -315,6 +376,10 @@ def iniciar_sesion():
     MODIFICADO: Esta función ahora directamente cambia a la interfaz principal de la aplicación
     y lanza el monitoreo de red, sin validar usuario ni contraseña.
     """
+
+    lanzar_scapy_sniffer()
+    verificar_volumen_alertas(app_frames["principal"].notif_frame)
+
     # Inicializa las otras interfaces si no están ya en app_frames
     # Esto es importante porque `show_frame` las espera en el diccionario
     if "principal" not in app_frames:
@@ -582,17 +647,17 @@ def interfaz_historial():
     historial_content_frame = CTkFrame(historial_frame, fg_color="#010101")
     historial_content_frame.grid(row=0, column=1, sticky='nsew', padx=20, pady=20)
     historial_content_frame.columnconfigure(0, weight=1)
-    historial_content_frame.rowconfigure(2, weight=1) # Permite que el scroll_frame se expanda.
+    historial_content_frame.rowconfigure(6, weight=1) # Permite que el scroll_frame se expanda.
 
     # Título
     CTkLabel(historial_content_frame,
-             text=T("historial_anomalias"),
+             text=T("Historial Anomalias"),
              font=('sans serif', 20, 'bold'),
              text_color='#FFFFFF').grid(row=0, column=0, sticky='w', padx=10, pady=(0, 10))
 
     # Cuadro de búsqueda (funcionalidad no implementada, es solo visual).
     campo_busqueda=CTkEntry(historial_content_frame,
-             placeholder_text=T('Buscar'),
+             placeholder_text=T('Buscar...'),
              font=('sans serif', 12),
              border_color='#ffffff',
              fg_color="#3B3B3B",
@@ -610,19 +675,19 @@ def interfaz_historial():
 
     def confirmar_eliminacion(id, query):
         ventana = CTkToplevel(root)
-        ventana.title(T("eliminar_historial"))
-        CTkLabel(ventana, text=T("confirmar_eliminacion"), font=('sans serif', 13)).pack(pady=10)
-        CTkButton(ventana, text=T("Eliminar"), fg_color="#7b0000",
+        ventana.title("Eliminar Evento")
+        CTkLabel(ventana, text="¿Deseas eliminar este evento?", font=('sans serif', 13)).pack(pady=10)
+        CTkButton(ventana, text="Eliminar", fg_color="#7b0000",
                   command=lambda: (
                       eliminar_evento(id),
                       ventana.destroy(),
                       filtrar_eventos(query)
                   )).pack(pady=5)
-        CTkButton(ventana, text=T("Cancelar"), command=ventana.destroy).pack(pady=5)
+        CTkButton(ventana, text="Cancelar", command=ventana.destroy).pack(pady=5)
 
     def editar_evento(id, mensaje, origen, destino):
         ventana = CTkToplevel(root)
-        ventana.title(T("editar_evento"))
+        ventana.title("Editar Evento")
         mensaje_entry = CTkEntry(ventana, placeholder_text="Mensaje", text=mensaje)
         origen_entry = CTkEntry(ventana, placeholder_text="Origen", text=origen)
         destino_entry = CTkEntry(ventana, placeholder_text="Destino", text=destino)
@@ -647,7 +712,7 @@ def interfaz_historial():
         eventos = obtener_eventos(filtro=query)
 
         if not eventos:
-            CTkLabel(scroll_frame, text=T("no_anomalias_registradas"),
+            CTkLabel(scroll_frame, text="No hay anomalías registradas.",
                      font=('sans serif', 12), text_color="#DDDDDD").grid(row=0, column=0, sticky='w', padx=10, pady=10)
             return
 
@@ -673,7 +738,7 @@ def interfaz_historial():
     filtrar_eventos("")
     # Botón para eliminar el historial (funcionalidad pendiente de implementar).
     CTkButton(historial_content_frame,
-              text=T('eliminar_historial'),
+              text=T('Eliminar Historial'),
               font=('sans serif', 12),
               border_color="#890000", # Borde rojo.
               fg_color="#3B3B3B",
@@ -684,6 +749,69 @@ def interfaz_historial():
               width=180,
               height=35,
               command=lambda: print("Funcionalidad de eliminar historial pendiente")).grid(row=3, column=0, sticky='e', padx=10, pady=10)
+
+# --- NUEVA SECCIÓN: Alertas por volumen ---
+    CTkLabel(historial_content_frame,
+             text="Alertas por Volumen de Paquetes",
+             font=('sans serif', 18, 'bold'),
+             text_color="#FFFFFF").grid(row=4, column=0, sticky='w', padx=10, pady=(20, 5))
+
+    volumen_scroll = CTkScrollableFrame(historial_content_frame, fg_color="#121212", width=600, height=250)
+    volumen_scroll.grid(row=5, column=0, sticky='nsew', padx=10, pady=(0, 10))
+    volumen_scroll.columnconfigure(0, weight=1)
+
+    def cargar_alertas_por_volumen():
+        for widget in volumen_scroll.winfo_children():
+            widget.destroy()
+        try:
+            conexion = mysql.connector.connect(
+                host=AWS_ENDPOINT,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE
+            )
+            cursor = conexion.cursor()
+            cursor.execute("""
+                SELECT src_ip, COUNT(*) as total
+                FROM paquetes
+                WHERE timestamp >= NOW() - INTERVAL 2 MINUTE
+                GROUP BY src_ip
+                HAVING total > 100
+            """)
+            resultados = cursor.fetchall()
+            cursor.close()
+            conexion.close()
+        except Exception as e:
+            CTkLabel(volumen_scroll, text=f"Error: {e}", text_color="red").pack()
+            return
+
+        if not resultados:
+            CTkLabel(volumen_scroll, text="No hay alertas de volumen recientes.", text_color="#DDDDDD").pack()
+        else:
+            for ip, total in resultados:
+                color = "#FF5555" if total > 200 else "#FFA500" if total > 150 else "#DDDDDD"
+                CTkLabel(volumen_scroll,
+                    text=f"🚨 IP {ip} generó {total} paquetes en 2 minutos.",
+                    font=('sans serif', 12),
+                    text_color=color).pack(pady=2)
+
+    def refrescar_alertas_por_volumen():
+        cargar_alertas_por_volumen()
+        volumen_scroll.after(60000, refrescar_alertas_por_volumen)  # 60 segundos
+
+    # Botón manual de actualización (opcional)
+    CTkButton(historial_content_frame,
+              text="Actualizar Alertas de Volumen",
+              font=('sans serif', 12),
+              fg_color="#3B3B3B",
+              hover_color="#555555",
+              text_color="#ffffff",
+              width=220,
+              command=cargar_alertas_por_volumen).grid(row=6, column=0, sticky='e', padx=10, pady=5)
+
+    cargar_alertas_por_volumen()
+    refrescar_alertas_por_volumen()
+
 
 # --- Interfaz de Soporte ---
 def interfaz_soporte():
@@ -928,8 +1056,8 @@ if __name__ == "__main__":
                                  width=220,
                                  height=40)
     contrasenna_entry.grid(columnspan=2, row=2, padx=4, pady=4)
-
     # Botón de inicio de sesión
+
     bt_iniciar = CTkButton(login_frame,
                            text=T('iniciar_sesion'),
                            font=('sans serif', 12),
