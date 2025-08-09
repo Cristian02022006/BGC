@@ -5,11 +5,13 @@ from plyer import notification
 import threading
 import mysql.connector
 import pymysql
+import hashlib
 from googletrans import Translator 
 from tkinter import filedialog
 from scapy.all import sniff, IP
 from datetime import datetime, timedelta
 from collections import defaultdict
+import tkinter as tk
 import time
 
 # ------------ CONFIGURA ESTOS DATOS CON LOS TUYOS --------------------
