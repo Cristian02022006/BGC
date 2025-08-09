@@ -337,7 +337,7 @@ def show_frame(frame_name):
             app_frames[frame_name].load_events()
         if hasattr(app_frames[frame_name], 'load_paquetes'):
             app_frames[frame_name].load_paquetes()
-            
+
 
 def reconstruir_interfaz_actual():
     global current_active_frame_name
@@ -363,8 +363,10 @@ def reconstruir_interfaz_actual():
         elif current_active_frame_name == "configuracion":
             interfaz_configuracion()
 
-        if current_active_frame_name in app_frames:
-            app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
+         # Después de recrear, mostrar el frame nuevamente
+        app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
+        app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
+
 
 def actualizar_idioma(nuevo_idioma_seleccionado):
     """
@@ -419,28 +421,73 @@ label_usuc = None
 # --- Interfaz de Inicio de Sesión ---
 def iniciar_sesion():
     """
-    MODIFICADO: Esta función ahora directamente cambia a la interfaz principal de la aplicación
-    y lanza el monitoreo de red, sin validar usuario ni contraseña.
+    Valida el usuario y contraseña contra la tabla `usuario` en la base de datos.
+    Si las credenciales son correctas, cambia a la interfaz principal y guarda el ID del usuario.
     """
+    global current_user_id
+    entered_username = usuario_entry.get()
+    entered_password = contrasenna_entry.get()
 
-    # Inicializar otras interfaces si no están ya en app_frames
-    if "principal" not in app_frames:
-        interfaz_principal()
-    if "usuario" not in app_frames:
-        interfaz_usuario()
-    if "historial" not in app_frames:
-        interfaz_historial()
-    if "soporte" not in app_frames:
-        interfaz_soporte()
-    if "configuracion" not in app_frames:
-        interfaz_configuracion()
+    # Encriptar la contraseña ingresada con SHA256 antes de la comparación.
+    # El método .encode('utf-8') es necesario para convertir la cadena en bytes.
+    hashed_password = hashlib.sha256(entered_password.encode('utf-8')).hexdigest()
 
-    show_frame("principal") # Cambia a la interfaz principal.
+    try:
+        conexion = mysql.connector.connect(
+            host=AWS_ENDPOINT,
+            user=MYSQL_USER,
+            password=MYSQL_PASSWORD,
+            database=MYSQL_DATABASE
+        )
+        cursor = conexion.cursor()
+        # Asegúrate de que la tabla 'usuario' exista antes de intentar consultarla,
+        # ahora con la columna 'contrasena'.
+        cursor.execute('''CREATE TABLE IF NOT EXISTS usuario (
+                            id_usuario INT PRIMARY KEY,
+                            nombre VARCHAR(50) NOT NULL,
+                            rol VARCHAR(30),
+                            telefono VARCHAR(15),
+                            correo VARCHAR(50) UNIQUE NOT NULL,
+                            contrasena VARCHAR(255) NOT NULL -- Cambiado de password_hash a contrasena
+                        );''')
+        conexion.commit() # Confirmar la creación de la tabla si no existía.
 
-    if hasattr(app_frames["principal"], 'notif_frame'):
-        threading.Thread(target=iniciar_monitoreo_red, args=(app_frames["principal"].notif_frame,), daemon=True).start()
-    else:
-        print("Error: notif_frame no encontrado en principal_frame.")
+         # Consulta para verificar las credenciales, usando la columna 'contrasena'
+        # y la contraseña encriptada.
+        cursor.execute("SELECT id_usuario FROM usuario WHERE id_usuario = %s AND contrasena = %s",
+                       (entered_username, hashed_password))
+        user_data = cursor.fetchone()
+
+        if user_data:
+            current_user_id = user_data[0] # Almacena el ID del usuario.
+            print(f"Inicio de sesión exitoso para el usuario con ID: {current_user_id}")
+            # Inicializa las otras interfaces si no están ya en app_frames
+            if "principal" not in app_frames:
+                interfaz_principal()
+            if "usuario" not in app_frames:
+                interfaz_usuario()
+            if "historial" not in app_frames:
+                interfaz_historial()
+            if "soporte" not in app_frames:
+                interfaz_soporte()
+            if "configuracion" not in app_frames:
+                interfaz_configuracion()
+            show_frame("principal") # Cambia a la interfaz principal.
+
+            threading.Thread(target=iniciar_sniffing, daemon=True).start()
+
+        else:
+            CTkLabel(login_frame, text=T('usuario o contraseña incorrectos'), text_color="red", font=('sans serif', 12)).grid(columnspan=2, row=3, padx=4, pady=4)
+            print("Intento de inicio de sesión fallido.")
+
+    except mysql.connector.Error as err:
+        print(f"Error de base de datos durante el inicio de sesión: {err}")
+        CTkLabel(login_frame, text=f"Error de conexión: {err}", text_color="red", font=('sans serif', 12)).grid(columnspan=2, row=3, padx=4, pady=4)
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conexion' in locals() and conexion.is_connected():
+            conexion.close()
 
 
 
