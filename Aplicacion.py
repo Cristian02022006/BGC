@@ -28,6 +28,9 @@ connection = pymysql.connect(
     database=MYSQL_DATABASE
 )
 
+# Variable global para almacenar el ID del usuario actualmente logeado
+current_user_id = None
+
 # ---------------------------------------------------------------------
 
 # --- Configuración de Idiomas ---
@@ -51,6 +54,61 @@ def T(text_to_translate, *args):
 app_frames = {}
 # Variable para mantener una referencia al frame actual visible.
 current_active_frame_name = None
+
+def guardar_paquete(pkt):
+    """
+    Guarda los detalles de un paquete de red en la tabla 'paquetes' de la base de datos MySQL.
+    Asegura que la tabla 'paquetes' exista con la estructura definida por el usuario,
+    incluyendo la asignación al usuario logeado.
+    """
+    global current_user_id # Acceder a la variable global
+
+    if IP in pkt:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        src_ip = pkt[IP].src
+        dst_ip = pkt[IP].dst
+        proto = pkt[IP].proto
+        # Mapea los números de protocolo a nombres comunes.
+        protocol = {6: 'TCP', 17: 'UDP', 1: 'ICMP'}.get(proto, str(proto))
+        length = len(pkt)
+        detectar_anomalias(pkt)
+        try:
+            conexion = mysql.connector.connect(
+                host=AWS_ENDPOINT,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE
+            )
+            cursor = conexion.cursor()
+            # Crear la tabla 'paquetes' si no existe, con la estructura exacta del usuario
+            # y la columna id_usuario con clave foránea.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS paquetes (
+                    id_paquete INT PRIMARY KEY AUTO_INCREMENT,
+                    timestamp DATETIME,
+                    src_ip VARCHAR(45),
+                    dst_ip VARCHAR(45),
+                    protocol VARCHAR(20),
+                    length INT,
+                    id_usuario INT, -- Nueva columna para asignar el paquete a un usuario
+                    FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
+                    ON DELETE CASCADE
+                    ON UPDATE SET NULL
+                )
+            """)
+            # Inserta el paquete en la tabla 'paquetes', incluyendo el id_usuario
+            cursor.execute("""
+                INSERT INTO paquetes (timestamp, src_ip, dst_ip, protocol, length, id_usuario)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (timestamp, src_ip, dst_ip, protocol, length, current_user_id)) # Pasa current_user_id
+            conexion.commit() # Confirma la transacción.
+        except Exception as e:
+            print("Error guardando paquete:", e)
+        finally:
+            # Asegura que el cursor y la conexión se cierren.
+            if 'cursor' in locals(): cursor.close()
+            if 'conexion' in locals() and conexion.is_connected(): conexion.close()
+
 
 ##" reglas para las anomalías"
 ult_registroa = defaultdict(dict)
@@ -127,6 +185,14 @@ def detectar_anomalias(pkt):
                     print("No se pudo recargar historial:", e)
 
 
+def iniciar_sniffing():
+    """
+    Inicia la captura de paquetes de red de forma continua.
+    Cada paquete capturado es procesado por la función 'guardar_paquete'.
+    """
+    sniff(prn=guardar_paquete, store=False)
+
+
 
 def verificar_anomalia(ip, tipo):
     ahora = datetime.now()
@@ -137,11 +203,14 @@ def verificar_anomalia(ip, tipo):
     return False
 
 # --- Database Functions ---
-def guardar_anomalia(mensaje, origen, destino):
+def guardar_anomalia(tipo_anomalia, descripcion, severidad):
     """
     Guarda los detalles de una anomalía detectada en la base de datos MySQL.
     Se conecta a la base de datos RDS de AWS utilizando las credenciales definidas.
+    Asigna la anomalía al usuario actualmente logeado.
     """
+    global current_user_id # Acceder a la variable global
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         conexion = mysql.connector.connect(
             host=AWS_ENDPOINT,
@@ -150,43 +219,68 @@ def guardar_anomalia(mensaje, origen, destino):
             database=MYSQL_DATABASE
         )
         cursor = conexion.cursor()
-        # Se asegura de que la tabla 'anomalias' exista con las columnas correctas.
-        cursor.execute('''CREATE TABLE IF NOT EXISTS anomalias (
-                    id_anomalia INT AUTO_INCREMENT PRIMARY KEY,
-                    tipo_anomalia VARCHAR(50) NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    descripcion TEXT NOT NULL,
-                    severidad VARCHAR(15) NOT NULL,
-                    origen_ip VARCHAR(45),
-                    destino_ip VARCHAR(45),
-                    id_usuario INT,
-                    FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
-                    ON DELETE CASCADE
-                    ON UPDATE SET NULL
-                    );''')
 
-        # Traduce el tipo de anomalía y la descripción a inglés para un almacenamiento consistente.
-        # Aquí 'mensaje' es la descripción detallada de la anomalía (ej. "Protocolo inusual: TCP")
-        # El texto original para la DB debe ser siempre el mismo para una traducción consistente.
-        db_tipo_anomalia = translator.translate("Protocolo Inusual", dest='en', src='es').text # Siempre traduce "Protocolo Inusual" de español a inglés
-        db_descripcion = translator.translate(mensaje, dest='en', src='es').text # Traduce el mensaje de la anomalía de español a inglés
-
-        db_severidad = "Mediana" # Ejemplo de severidad
-        db_id_usuario = None # O un ID de usuario específico si se implementa la gestión de usuarios
-
+        # Inserta la anomalía en la tabla, incluyendo el id_usuario
         cursor.execute(
-            "INSERT INTO anomalias (tipo_anomalia, descripcion, severidad, origen_ip, destino_ip, id_usuario) VALUES (%s, %s, %s, %s, %s, %s)",
-            (db_tipo_anomalia, db_descripcion, db_severidad, origen, destino, db_id_usuario)
+            "INSERT INTO anomalias (tipo_anomalia, timestamp, descripcion, severidad, id_usuario) VALUES (%s, %s, %s, %s, %s)",
+            (tipo_anomalia, timestamp, descripcion, severidad, current_user_id)
         )
-        conexion.commit() # Confirma la transacción.
-        print(T("Anomalía guardada: {} de {} a {}", mensaje, origen, destino)) # Usamos T() para traducir el mensaje de confirmación
+        conexion.commit()
+        print(f"[REGISTRO] Anomalía guardada: {tipo_anomalia} - {descripcion}")
+
+
+        notification.notify(
+            title="BGC - Análisis de Red",
+            message=f"Anomalía Detectada\n{tipo_anomalia}: {descripcion}",
+            timeout=10
+        )
+
     except mysql.connector.Error as err:
-        print(T("Error al guardar anomalía en MySQL: {}", err)) # Usamos T() para traducir el mensaje de error
+        print(f"[ERROR] No se pudo guardar la anomalía: {err}")
     finally:
-        # Asegura que la conexión a la base de datos se cierre correctamente.
-        if 'conexion' in locals() and conexion.is_connected():
+        if 'cursor' in locals():
             cursor.close()
+        if 'conexion' in locals() and conexion.is_connected():
             conexion.close()
+
+def detectar_anomalias_con_sql(cursor):
+    """
+    Detecta y registra anomalías usando consultas SQL.
+    """
+    
+    # 1. Detección de anomalías de tiempo con SQL
+    print("Buscando anomalías de tiempo con SQL...")
+    
+    # Consulta SQL para encontrar IPs con muchos paquetes en poco tiempo
+    sql_tiempo = """
+    SELECT src_ip, COUNT(*) AS num_paquetes, TIMESTAMPDIFF(SECOND, MIN(timestamp), MAX(timestamp)) AS duracion_segundos
+    FROM paquetes
+    GROUP BY src_ip
+    HAVING COUNT(*) > 4 AND duracion_segundos < 5;
+    """
+    
+  
+    # Puedes añadir aquí las consultas para 'DIRECCIÓN' y 'PROTOCOLO'
+    # 2. Detección de anomalías de dirección con SQL
+    print("Buscando anomalías de dirección con SQL...")
+    sql_direccion = """
+    SELECT src_ip, COUNT(DISTINCT dst_ip) AS num_destinos_unicos
+    FROM paquetes
+    GROUP BY src_ip
+    HAVING COUNT(DISTINCT dst_ip) > 3;
+    """
+    
+
+    
+    # 3. Detección de anomalías de protocolo con SQL
+    print("Buscando anomalías de protocolo con SQL...")
+    sql_protocolo = """
+    SELECT src_ip, COUNT(DISTINCT protocol) AS num_protocolos
+    FROM paquetes
+    GROUP BY src_ip
+    HAVING COUNT(DISTINCT protocol) > 1;
+    """
+    
 
 # --- Network Monitoring Functions ---
 def es_anomalia(pkt):
@@ -341,25 +435,6 @@ def iniciar_sesion():
         print("Error: notif_frame no encontrado en principal_frame.")
 
 
-def iniciar_monitoreo_red(notif_frame):
-    """
-    Inicia la captura de paquetes de red y el monitoreo de anomalías.
-    Las notificaciones se agregarán al 'notif_frame' en la interfaz principal.
-    """
-    print("Iniciando monitoreo de red...")
-    try:
-        capture = pyshark.LiveCapture()
-        
-        for pkt in capture.sniff_continuously():
-            anomalia_info = es_anomalia(pkt)
-            if anomalia_info:
-                mensaje_anomalia, src_ip, dst_ip = anomalia_info
-                root.after(0, agregar_notificacion, notif_frame, f"{T('Anomalía detectada')}: {mensaje_anomalia} ({src_ip} -> {dst_ip})")
-                notificar_usuario(T('Anomalía detectada'), mensaje_anomalia)
-                guardar_anomalia(mensaje_anomalia, src_ip, dst_ip)
-
-    except Exception as e:
-        print(T("Error durante el monitoreo de red: {}", e))
 
 # ---------------- INTERFAZ DE PRINCIPAL ------------------------
 def interfaz_principal():
