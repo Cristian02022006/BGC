@@ -1,11 +1,10 @@
 BGC-Analisis de Red
-- Equipo:
+  Equipo:
 - Barbara Lisset Gonzalez Duran
 - Ana Gabriela Romero Toriz
 - Crisrtian Romero Trujeque
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 DOCUMENTACIÓN DE LA APLICACIÓN
-
 - INTERFAZ DE INICIO DE SESIÓN
 Al inicializar la aplicacion se adrira una pantalla de inicio de sesion, donde se validaran los datos dados al usuario tales como su "Nombre de usuario" y "Contraseña,
 dichos datos se validaran con los datos insertados por nosotros en la tabla `usuario` en la base de datos.
