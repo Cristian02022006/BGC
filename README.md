@@ -15,7 +15,7 @@ Si las credenciales son correctas, cambiar la pantalla de inicio a la interfaz p
   <img width="1059" height="1082" alt="image" src="https://github.com/user-attachments/assets/3a31d493-e268-4fe3-9e2e-89581e6f2895" />
   
   <img width="2879" height="1532" alt="image" src="https://github.com/user-attachments/assets/b0e1de69-e16b-4ee0-850a-6331d7540958" />
------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 - INTERFAZ PRINCIPAL
   
@@ -26,7 +26,7 @@ inicial de nuestra aplicacion.
  <img width="1773" height="553" alt="image" src="https://github.com/user-attachments/assets/9103d2f3-a524-4357-8fab-6d89a60d7782" />
 
  <img width="2877" height="1526" alt="image" src="https://github.com/user-attachments/assets/2456202d-f88e-4008-8286-e3b58421369a" />
------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 - INTERFAZ DE USUARIO
   
@@ -38,7 +38,7 @@ seleccionar una imagen al gusto para su foto de perfil, asi como tambien se perm
 <img width="2879" height="1505" alt="image" src="https://github.com/user-attachments/assets/8897042c-608e-4b89-b0fc-2e10cce91ec9" />
 <img width="2879" height="1516" alt="image" src="https://github.com/user-attachments/assets/03947489-3f11-42ef-8a94-e49c026aaee3" />
 <img width="2879" height="1504" alt="image" src="https://github.com/user-attachments/assets/0cee43fc-1205-4c77-bb5d-998f2e86bd67" />
- -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ --------------------------------------------------------------------------------------------------------------------------------------------------------------
  
 - INTERFAZ DE HISTORIAL
   
@@ -69,7 +69,7 @@ borrar el historial de anomalias guardadas en la base de datos.
  <img width="2862" height="1511" alt="image" src="https://github.com/user-attachments/assets/0b1d7b5b-cc2a-4daf-8ef8-236c543f2894" />
  <img width="2879" height="1513" alt="image" src="https://github.com/user-attachments/assets/8e9d35d4-de81-46a7-ac23-2cb7b153a098" />
  <img width="2867" height="1491" alt="image" src="https://github.com/user-attachments/assets/c6d7156d-0b92-4078-b680-be635b9d5151" />
------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 - INTERFAZ DE SOPORTE
   
@@ -79,7 +79,7 @@ como se muestra, aparece nuestro nombre, correo y teléfono.
  <img width="1131" height="326" alt="image" src="https://github.com/user-attachments/assets/d880bbd8-d78b-462b-9148-ac004059df54" />
 
 <img width="2879" height="1527" alt="image" src="https://github.com/user-attachments/assets/6b68df85-4427-41ee-97d7-f005f7f284dd" />
------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 - INTERFAZ DE CONFIGURACION
   
