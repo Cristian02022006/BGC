@@ -5,7 +5,7 @@ Equipo:
 - Crisrtian Romero Trujeque
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 DOCUMENTACIÓN DE LA APLICACIÓN
-INTERFAZ DE INICIO DE SESIÓN
+-INTERFAZ DE INICIO DE SESIÓN
 Al inicializar la aplicacion se adrira una pantalla de inicio de sesion, donde se validaran los datos dados al usuario tales como su "Nombre de usuario" y "Contraseña,
 dichos datos se validaran con los datos insertados por nosotros en la tabla `usuario` en la base de datos.
 Si las credenciales son correctas, cambiar la pantalla de inicio a la interfaz principal y se guarda el ID del usuario.
@@ -13,7 +13,7 @@ Si las credenciales son correctas, cambiar la pantalla de inicio a la interfaz p
   
   <img width="2879" height="1532" alt="image" src="https://github.com/user-attachments/assets/b0e1de69-e16b-4ee0-850a-6331d7540958" />
 
-INTERFAZ PRINCIPAL
+-INTERFAZ PRINCIPAL
 En esta pantalla se vizualizara inicialmente nuestro menu (dicho menu se mostrara en todas las interfacez, ya que este sera un menu fijo) en el lado posterior izquierdo, al cual se le agregaron iconos para una mejor interpretación y se facilitara la navegacion,
 esto se trabajo con la ayuda de botones que permiten al usuario navegar libremente sobre las demas interfaces, asimismo en esta pantalla se observara una breve bienvenida donde se explicara el proposito
 inicial de nuestra aplicacion.
@@ -22,7 +22,7 @@ inicial de nuestra aplicacion.
 
  <img width="2877" height="1526" alt="image" src="https://github.com/user-attachments/assets/2456202d-f88e-4008-8286-e3b58421369a" />
 
-INTERFAZ DE USUARIO
+-INTERFAZ DE USUARIO
 Ya en la interfaz de usuario se vizualiza la información del perfil de dicho usuario (Nombre, Rol y Corre),guardada en la base de datos. En esta pantalla tambien se le permitira al usuario insertar y
 seleccionar una imagen al gusto para su foto de perfil, asi como tambien se permitira actualizarla si este lo desea.
  <img width="697" height="977" alt="image" src="https://github.com/user-attachments/assets/407a6081-5ca9-4aa0-b5b8-6aca1fa2b1b4" />
@@ -32,7 +32,7 @@ seleccionar una imagen al gusto para su foto de perfil, asi como tambien se perm
 <img width="2879" height="1516" alt="image" src="https://github.com/user-attachments/assets/03947489-3f11-42ef-8a94-e49c026aaee3" />
 <img width="2879" height="1504" alt="image" src="https://github.com/user-attachments/assets/0cee43fc-1205-4c77-bb5d-998f2e86bd67" />
  
-INTERFAZ DE HISTORIAL
+-INTERFAZ DE HISTORIAL
 En historial, la interfaz es dividida en dos apartados, del lado izquierdo se mostraran las anomalias registradas en la base de datos, estas con base a las reglas de tiempo, protocolo y dirección.
  Reglas:
 - Tiempo: Evalúa cuántos paquetes ha enviado una IP de origen en un periodo corto de tiempo, en este caso (5 segundos).
@@ -61,7 +61,7 @@ borrar el historial de anomalias guardadas en la base de datos.
  <img width="2879" height="1513" alt="image" src="https://github.com/user-attachments/assets/8e9d35d4-de81-46a7-ac23-2cb7b153a098" />
  <img width="2867" height="1491" alt="image" src="https://github.com/user-attachments/assets/c6d7156d-0b92-4078-b680-be635b9d5151" />
 
-INTERFAZ DE SOPORTE
+- INTERFAZ DE SOPORTE
 Continuamos con la pantalla de soporte, en esta se encuentran los datos de contacto de nosotros, pues somos los encargados de que nuestra aplicación funcione correctamente,
 como se muestra, aparece nuestro nombre, correo y teléfono.
  <img width="1238" height="1275" alt="image" src="https://github.com/user-attachments/assets/4335670b-82e0-49d3-a0db-badf49b26a5d" />
@@ -69,7 +69,7 @@ como se muestra, aparece nuestro nombre, correo y teléfono.
 
 <img width="2879" height="1527" alt="image" src="https://github.com/user-attachments/assets/6b68df85-4427-41ee-97d7-f005f7f284dd" />
 
-INTERFAZ DE CONFIGURACION
+- INTERFAZ DE CONFIGURACION
 En el apartado de configuración por el momento solo se encuentra la funcionalidad del cambio de idioma, siendo solo 5 (Español, Ingles (Britanico), Aleman, Chino y Frances)
 idiomas configurados para la traduccion ya que a futuro pensamos implementar la personalización del tamaño de letra al igual que el cambio de tema de la interfaz.
  <img width="970" height="1197" alt="image" src="https://github.com/user-attachments/assets/900ca40a-8d58-4def-b52e-9468e9876d18" />
