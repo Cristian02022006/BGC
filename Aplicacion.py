@@ -819,6 +819,24 @@ def interfaz_historial():
     except Exception as e:
         print(T("Error cargando icono de configuración:", e))
 
+    # Mostrar el nombre del usuario logeado
+    user_name_display = "Usuario" # Default
+    if current_user_id:
+        try:
+            conexion = mysql.connector.connect(host=AWS_ENDPOINT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT nombre FROM usuario WHERE id_usuario = %s", (current_user_id,))
+            result = cursor.fetchone()
+            if result:
+                user_name_display = result[0]
+        except Exception as e:
+            print(f"Error obteniendo nombre de usuario: {e}")
+        finally:
+            if 'cursor' in locals(): cursor.close()
+            if 'conexion' in locals() and conexion.is_connected(): conexion.close()
+
+    CTkLabel(sidebar, text=user_name_display, font=('sans serif', 20, 'bold')).pack(pady=(20, 10))
+
    
     CTkButton(sidebar, text=T('Principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
     CTkButton(sidebar, text=T('Usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
