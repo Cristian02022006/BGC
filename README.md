@@ -16,6 +16,7 @@ Si las credenciales son correctas, cambiar la pantalla de inicio a la interfaz p
   
   <img width="2879" height="1532" alt="image" src="https://github.com/user-attachments/assets/b0e1de69-e16b-4ee0-850a-6331d7540958" />
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 - INTERFAZ PRINCIPAL
   
 En esta pantalla se vizualizara inicialmente nuestro menu (dicho menu se mostrara en todas las interfacez, ya que este sera un menu fijo) en el lado posterior izquierdo, al cual se le agregaron iconos para una mejor interpretación y se facilitara la navegacion,
@@ -26,6 +27,7 @@ inicial de nuestra aplicacion.
 
  <img width="2877" height="1526" alt="image" src="https://github.com/user-attachments/assets/2456202d-f88e-4008-8286-e3b58421369a" />
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 - INTERFAZ DE USUARIO
   
 Ya en la interfaz de usuario se vizualiza la información del perfil de dicho usuario (Nombre, Rol y Corre),guardada en la base de datos. En esta pantalla tambien se le permitira al usuario insertar y
@@ -37,6 +39,7 @@ seleccionar una imagen al gusto para su foto de perfil, asi como tambien se perm
 <img width="2879" height="1516" alt="image" src="https://github.com/user-attachments/assets/03947489-3f11-42ef-8a94-e49c026aaee3" />
 <img width="2879" height="1504" alt="image" src="https://github.com/user-attachments/assets/0cee43fc-1205-4c77-bb5d-998f2e86bd67" />
  -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 
 - INTERFAZ DE HISTORIAL
   
 En historial, la interfaz es dividida en dos apartados, del lado izquierdo se mostraran las anomalias registradas en la base de datos, estas con base a las reglas de tiempo, protocolo y dirección.
@@ -67,6 +70,7 @@ borrar el historial de anomalias guardadas en la base de datos.
  <img width="2879" height="1513" alt="image" src="https://github.com/user-attachments/assets/8e9d35d4-de81-46a7-ac23-2cb7b153a098" />
  <img width="2867" height="1491" alt="image" src="https://github.com/user-attachments/assets/c6d7156d-0b92-4078-b680-be635b9d5151" />
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 - INTERFAZ DE SOPORTE
   
 Continuamos con la pantalla de soporte, en esta se encuentran los datos de contacto de nosotros, pues somos los encargados de que nuestra aplicación funcione correctamente,
@@ -76,6 +80,7 @@ como se muestra, aparece nuestro nombre, correo y teléfono.
 
 <img width="2879" height="1527" alt="image" src="https://github.com/user-attachments/assets/6b68df85-4427-41ee-97d7-f005f7f284dd" />
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 - INTERFAZ DE CONFIGURACION
   
 En el apartado de configuración por el momento solo se encuentra la funcionalidad del cambio de idioma, siendo solo 5 (Español, Ingles (Britanico), Aleman, Chino y Frances)
