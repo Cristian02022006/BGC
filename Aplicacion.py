@@ -8,6 +8,10 @@ import mysql.connector
 import pymysql
 from googletrans import Translator 
 from tkinter import filedialog
+from scapy.all import sniff, IP
+from datetime import datetime, timedelta
+from collections import defaultdict
+import time
 
 # ------------ CONFIGURA ESTOS DATOS CON LOS TUYOS --------------------
 AWS_ENDPOINT = "database-proyecto-prueba.cdye4eomwbfz.us-east-2.rds.amazonaws.com"   # Coloca el endpoint que te proporciona AWS para tu base de datos RDS
@@ -48,6 +52,90 @@ def T(text_to_translate, *args):
 app_frames = {}
 # Variable para mantener una referencia al frame actual visible.
 current_active_frame_name = None
+
+##" reglas para las anomalías"
+ult_registroa = defaultdict(dict)
+tiempo_esp = timedelta(seconds=30)
+
+registro_tiempos = defaultdict(list)
+conteo_destinos = defaultdict(set)
+registro_protocolos = defaultdict(set)
+
+UMBRAL_PAQUETES_RAPIDOS = 6  
+UMBRAL_DESTINOS = 5
+
+
+def detectar_anomalias(pkt):
+    if IP in pkt:
+        ip_origen = pkt[IP].src
+        ip_destino = pkt[IP].dst
+        protocolo = pkt[IP].proto
+        hora_actual = datetime.now()
+
+        # Tiempo
+        registro_tiempos[ip_origen].append(hora_actual)
+        tiempos = [t for t in registro_tiempos[ip_origen] if (hora_actual - t).seconds < 5]
+        registro_tiempos[ip_origen] = tiempos  # actualiza para mantener limpio
+        num_pkts = len(tiempos)
+
+        if num_pkts > UMBRAL_PAQUETES_RAPIDOS and verificar_anomalia(ip_origen, "TIEMPO"):
+            descripcion = f"La IP {ip_origen} envió {num_pkts} paquetes en un tiempo inusual)."
+            guardar_anomalia("TIEMPO", descripcion, "Alta")
+            print("[ANOMALÍA – TIEMPO]", descripcion)
+
+            if "historial" in app_frames:
+                try:
+                    app_frames["historial"].load_events()
+                except Exception as e:
+                    print("No se pudo recargar historial:", e)
+
+        # Dirección
+        conteo_destinos[ip_origen].add(ip_destino)
+        destinos_unicos = conteo_destinos[ip_origen]
+        num_destinos = len(destinos_unicos)
+
+        if num_destinos > UMBRAL_DESTINOS and verificar_anomalia(ip_origen, "DIRECCIÓN"):
+        # Muestra solo los 3 primeros destinos para no saturar la descripción
+            primeros_dest = ", ".join(list(destinos_unicos)[:3])
+            if num_destinos > 3:
+                primeros_dest += " …"
+
+            descripcion = (
+                f"La IP {ip_origen} contactó a {num_destinos} destinos diferentes")
+            guardar_anomalia("DIRECCIÓN", descripcion, "Media")
+            print("[ANOMALÍA – DIRECCIÓN]", descripcion)
+
+            if "historial" in app_frames:
+                try:
+                    app_frames["historial"].load_events()
+                except Exception as e:
+                    print("No se pudo recargar historial:", e)
+
+        # Tipo / Protocolo
+        registro_protocolos[ip_origen].add(protocolo)
+        protocolos_usados = registro_protocolos[ip_origen]
+
+        if len(protocolos_usados) > 1 and verificar_anomalia(ip_origen, "PROTOCOLO"):
+            descripcion = (
+                f"La IP {ip_origen} usó múltiples protocolos: ")
+            guardar_anomalia("PROTOCOLO", descripcion, "Alta")
+            print("[ANOMALÍA – PROTOCOLO]", descripcion)
+
+            if "historial" in app_frames:
+                try:
+                    app_frames["historial"].load_events()
+                except Exception as e:
+                    print("No se pudo recargar historial:", e)
+
+
+
+def verificar_anomalia(ip, tipo):
+    ahora = datetime.now()
+    ultima = ult_registroa[ip].get(tipo)
+    if not ultima or (ahora - ultima) > tiempo_esp:
+        ult_registroa[ip][tipo] = ahora
+        return True
+    return False
 
 # --- Database Functions ---
 def guardar_anomalia(mensaje, origen, destino):
@@ -135,39 +223,6 @@ def notificar_usuario(titulo, mensaje):
 
 # Lista global para almacenar los mensajes de notificación que se mostrarán en la GUI.
 notificaciones_lista = []
-
-def agregar_notificacion(frame_destino, mensaje):
-    """
-    Agrega un mensaje de notificación a la interfaz gráfica en el frame especificado.
-    Limita el número de notificaciones mostradas y las actualiza en tiempo real.
-    """
-    notificaciones_lista.append(mensaje) # Añade el nuevo mensaje a la lista.
-
-    # Limpia las notificaciones existentes en el frame para evitar duplicados y desorden.
-    # Excluye los widgets del encabezado (top_frame y su contenido) para no borrarlos.
-    for widget in frame_destino.winfo_children():
-        # Asumiendo que el top_frame siempre está en la fila 0 y no es un CTkLabel directo.
-        # Si la notificación es un CTkLabel y no es parte del encabezado, lo destruimos.
-        if isinstance(widget, CTkLabel) and widget.grid_info().get('row') != 0:
-            widget.destroy()
-
-    # Muestra las últimas 10 notificaciones (las más recientes primero).
-    display_count = 0
-    # Itera sobre la lista de notificaciones en orden inverso para mostrar las nuevas arriba.
-    for i, msg in enumerate(reversed(notificaciones_lista)):
-        if display_count < 10: # Limita el número de notificaciones mostradas.
-            # Crea una nueva etiqueta CTkLabel para cada notificación.
-            CTkLabel(frame_destino,
-                     text=msg,
-                     font=('sans serif', 12),
-                     text_color='#DDDDDD',
-                     anchor='w', # Alinea el texto a la izquierda.
-                     justify='left', # Justifica el texto a la izquierda.
-                     wraplength=frame_destino._current_width - 40 # Ajusta el salto de línea según el ancho del frame.
-                     ).grid(row=i + 1, column=0, sticky='w', padx=20, pady=2) # Coloca la etiqueta en la grilla.
-            display_count += 1
-        else:
-            break # Detiene el bucle si ya se mostraron 10 notificaciones.
 
 
 # --- Función para la Gestión de Frames (Interfaces) ---
