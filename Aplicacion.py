@@ -1,7 +1,6 @@
 from customtkinter import CTk, CTkFrame, CTkEntry, CTkLabel, CTkButton, CTkImage, CTkComboBox
 from PIL import Image
 import os
-import pyshark
 from plyer import notification
 import threading
 import mysql.connector
