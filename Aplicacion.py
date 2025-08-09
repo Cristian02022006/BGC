@@ -491,7 +491,7 @@ def iniciar_sesion():
 
 
 
-# ---------------- INTERFAZ DE PRINCIPAL ------------------------
+# ---------------- INTERFAZ PRINCIPAL ------------------------
 def interfaz_principal():
     """
     Define y configura la interfaz principal de la aplicación,
@@ -509,7 +509,7 @@ def interfaz_principal():
     # Menú lateral (Sidebar)
     menu_frame = CTkFrame(principal_frame, fg_color="#1A1A1A", width=150)
     menu_frame.grid(column=0, row=0, sticky='ns') # Se adhiere al norte y sur.
-    
+
     try:
         global label_usup
         if img_act is None:
@@ -523,33 +523,54 @@ def interfaz_principal():
 
     try:
         image = Image.open("Imagenes/perfil.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de usuario:", e))
+        print("Error cargando icono de usuario:", e)
 
     try:
         image = Image.open("Imagenes/historial.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de historial:", e))
+        print("Error cargando icono de historial:", e)
 
     try:
         image = Image.open("Imagenes/soporte.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de soporte:", e))
+        print("Error cargando icono de soporte:", e)
 
     try:
         image = Image.open("Imagenes/config2.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de configuración:", e))
+        print("Error cargando icono de configuración:", e)
 
     try:
         image = Image.open("Imagenes/home.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de configuración:", e))
+        print("Error cargando icono de configuración:", e)
+
+
+    # Modificar para mostrar el nombre del usuario logeado
+    user_name_display = "Usuario" # Default
+    if current_user_id:
+        print("ID de usuario actual:", current_user_id)    
+        try:
+            conexion = mysql.connector.connect(host=AWS_ENDPOINT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT nombre FROM usuario WHERE id_usuario = %s", (current_user_id,))
+            result = cursor.fetchone()
+            if result:
+                user_name_display = result[0]
+        except Exception as e:
+            print(f"Error obteniendo nombre de usuario: {e}")
+        finally:
+            if 'cursor' in locals(): cursor.close()
+            if 'conexion' in locals() and conexion.is_connected(): conexion.close()
+
+    
+    CTkLabel(menu_frame, text=user_name_display, font=('sans serif', 20, 'bold')).pack(pady=(20, 10))
 
 # Botones del menú que usan `lambda` para llamar a `show_frame` con el nombre del frame correspondiente.
     CTkButton(menu_frame, text=T('Principal'), image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
