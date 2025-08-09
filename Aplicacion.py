@@ -280,7 +280,7 @@ def detectar_anomalias_con_sql(cursor):
     GROUP BY src_ip
     HAVING COUNT(DISTINCT protocol) > 1;
     """
-    
+
 
 # --- Network Monitoring Functions ---
 def es_anomalia(pkt):
@@ -330,6 +330,14 @@ def show_frame(frame_name):
     # Muestra el frame deseado, asignándole el mismo espacio en la grilla (columna 0, fila 0).
     app_frames[frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
     current_active_frame_name = frame_name
+
+    # Si estamos mostrando el historial, recargar los eventos y paquetes
+    if frame_name == "historial":
+        if hasattr(app_frames[frame_name], 'load_events'):
+            app_frames[frame_name].load_events()
+        if hasattr(app_frames[frame_name], 'load_paquetes'):
+            app_frames[frame_name].load_paquetes()
+            
 
 def reconstruir_interfaz_actual():
     global current_active_frame_name
