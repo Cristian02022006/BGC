@@ -824,7 +824,7 @@ def interfaz_soporte():
     CTkLabel(main_content_frame, text=T("Soporte Técnico"), font=('sans serif', 20, 'bold'), text_color="white").grid(row=0, column=0, pady=(10, 5))
     CTkLabel(main_content_frame, text=T("Contactos Soporte"), font=('sans serif', 14), text_color="#AAAAAA").grid(row=1, column=0, pady=5)
     CTkLabel(main_content_frame, text=T("----------------------------------------------------------------"),text_color="#DDDDDD").grid(row=2, column=0, pady=2)
-    CTkLabel(main_content_frame, text=T("Nombre: Barbara Lisset Gonzalez Duran"), font=('sans serif', 14), text_color="#DDDDDD").grid(row=3, column=0, pady=2)
+    CTkLabel(main_content_frame, text=T("Nombre: Bárbara Lisset Gonzalez Duran"), font=('sans serif', 14), text_color="#DDDDDD").grid(row=3, column=0, pady=2)
     CTkLabel(main_content_frame, text=T("Email: barbi.lisset10@gmail.com"), font=('sans serif', 14), text_color="#DDDDDD").grid(row=4, column=0, pady=2)
     CTkLabel(main_content_frame, text=T("Teléfono: 2222153877"), font=('sans serif', 14), text_color="#DDDDDD").grid(row=5, column=0, pady=2)
     CTkLabel(main_content_frame, text=T("----------------------------------------------------------------"),text_color="#DDDDDD").grid(row=6, column=0, pady=2)
