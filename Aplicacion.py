@@ -664,7 +664,30 @@ def interfaz_usuario():
         print(T("Error cargando icono de configuración:", e))
 
     label_usupu = CTkLabel(master=sidebar, image=logou_ctk, text="")
-    label_usupu.pack(pady=(10, 0))  # Ajusta el margen según lo que necesites
+    label_usupu.pack(pady=(10, 0))  
+
+    # Modificar para mostrar el nombre del usuario logeado
+    user_name_display = "Usuario" # Default
+    user_email_display = "correo@example.com"
+    user_role_display = "Rol"
+
+    if current_user_id:
+        try:
+            conexion = mysql.connector.connect(host=AWS_ENDPOINT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT nombre, correo, rol FROM usuario WHERE id_usuario = %s", (current_user_id,))
+            result = cursor.fetchone()
+            if result:
+                user_name_display = result[0]
+                user_email_display = result[1]
+                user_role_display = result[2]
+        except Exception as e:
+            print(f"Error obteniendo datos de usuario para la interfaz: {e}")
+        finally:
+            if 'cursor' in locals(): cursor.close()
+            if 'conexion' in locals() and conexion.is_connected(): conexion.close()
+
+    CTkLabel(sidebar, text=user_name_display, font=('sans serif', 20, 'bold')).pack(pady=(20, 10))
 
     # Botones del menú para navegar entre interfaces.
     CTkButton(sidebar, text=T('Principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
@@ -741,11 +764,13 @@ def interfaz_historial():
     """
     global label_usuh, img_act
     historial_frame = CTkFrame(root, fg_color='#010101')
+    historial_frame.actualizar_auto = True
     app_frames["historial"] = historial_frame # Almacena el frame.
     historial_frame.grid_forget() # Lo oculta inicialmente.
 
     # Configuración de la grilla para el frame de historial.
-    historial_frame.columnconfigure(1, weight=1) # Columna de contenido se expande.
+    historial_frame.columnconfigure(1, weight=1) # Columna de contenido de anomalías se expande.
+    historial_frame.columnconfigure(2, weight=1) # Columna de paquetes se expande.
     historial_frame.rowconfigure(0, weight=1) # Fila principal se expande.
 
     # Sidebar (menú lateral) - Se repite por cada interfaz para la navegación.
