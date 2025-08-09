@@ -1,7 +1,6 @@
-from customtkinter import CTk, CTkFrame, CTkEntry, CTkLabel, CTkButton, CTkImage, CTkComboBox
+from customtkinter import CTk, CTkFrame, CTkEntry, CTkLabel, CTkButton, CTkImage, CTkComboBox, CTkScrollableFrame
 from PIL import Image
 import os
-import pyshark
 from plyer import notification
 import threading
 import mysql.connector
@@ -29,6 +28,9 @@ connection = pymysql.connect(
     database=MYSQL_DATABASE
 )
 
+# Variable global para almacenar el ID del usuario actualmente logeado
+current_user_id = None
+
 # ---------------------------------------------------------------------
 
 # --- Configuración de Idiomas ---
@@ -52,6 +54,61 @@ def T(text_to_translate, *args):
 app_frames = {}
 # Variable para mantener una referencia al frame actual visible.
 current_active_frame_name = None
+
+def guardar_paquete(pkt):
+    """
+    Guarda los detalles de un paquete de red en la tabla 'paquetes' de la base de datos MySQL.
+    Asegura que la tabla 'paquetes' exista con la estructura definida por el usuario,
+    incluyendo la asignación al usuario logeado.
+    """
+    global current_user_id # Acceder a la variable global
+
+    if IP in pkt:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        src_ip = pkt[IP].src
+        dst_ip = pkt[IP].dst
+        proto = pkt[IP].proto
+        # Mapea los números de protocolo a nombres comunes.
+        protocol = {6: 'TCP', 17: 'UDP', 1: 'ICMP'}.get(proto, str(proto))
+        length = len(pkt)
+        detectar_anomalias(pkt)
+        try:
+            conexion = mysql.connector.connect(
+                host=AWS_ENDPOINT,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE
+            )
+            cursor = conexion.cursor()
+            # Crear la tabla 'paquetes' si no existe, con la estructura exacta del usuario
+            # y la columna id_usuario con clave foránea.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS paquetes (
+                    id_paquete INT PRIMARY KEY AUTO_INCREMENT,
+                    timestamp DATETIME,
+                    src_ip VARCHAR(45),
+                    dst_ip VARCHAR(45),
+                    protocol VARCHAR(20),
+                    length INT,
+                    id_usuario INT, -- Nueva columna para asignar el paquete a un usuario
+                    FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
+                    ON DELETE CASCADE
+                    ON UPDATE SET NULL
+                )
+            """)
+            # Inserta el paquete en la tabla 'paquetes', incluyendo el id_usuario
+            cursor.execute("""
+                INSERT INTO paquetes (timestamp, src_ip, dst_ip, protocol, length, id_usuario)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (timestamp, src_ip, dst_ip, protocol, length, current_user_id)) # Pasa current_user_id
+            conexion.commit() # Confirma la transacción.
+        except Exception as e:
+            print("Error guardando paquete:", e)
+        finally:
+            # Asegura que el cursor y la conexión se cierren.
+            if 'cursor' in locals(): cursor.close()
+            if 'conexion' in locals() and conexion.is_connected(): conexion.close()
+
 
 ##" reglas para las anomalías"
 ult_registroa = defaultdict(dict)
@@ -128,6 +185,14 @@ def detectar_anomalias(pkt):
                     print("No se pudo recargar historial:", e)
 
 
+def iniciar_sniffing():
+    """
+    Inicia la captura de paquetes de red de forma continua.
+    Cada paquete capturado es procesado por la función 'guardar_paquete'.
+    """
+    sniff(prn=guardar_paquete, store=False)
+
+
 
 def verificar_anomalia(ip, tipo):
     ahora = datetime.now()
@@ -138,11 +203,14 @@ def verificar_anomalia(ip, tipo):
     return False
 
 # --- Database Functions ---
-def guardar_anomalia(mensaje, origen, destino):
+def guardar_anomalia(tipo_anomalia, descripcion, severidad):
     """
     Guarda los detalles de una anomalía detectada en la base de datos MySQL.
     Se conecta a la base de datos RDS de AWS utilizando las credenciales definidas.
+    Asigna la anomalía al usuario actualmente logeado.
     """
+    global current_user_id # Acceder a la variable global
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         conexion = mysql.connector.connect(
             host=AWS_ENDPOINT,
@@ -151,43 +219,68 @@ def guardar_anomalia(mensaje, origen, destino):
             database=MYSQL_DATABASE
         )
         cursor = conexion.cursor()
-        # Se asegura de que la tabla 'anomalias' exista con las columnas correctas.
-        cursor.execute('''CREATE TABLE IF NOT EXISTS anomalias (
-                    id_anomalia INT AUTO_INCREMENT PRIMARY KEY,
-                    tipo_anomalia VARCHAR(50) NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    descripcion TEXT NOT NULL,
-                    severidad VARCHAR(15) NOT NULL,
-                    origen_ip VARCHAR(45),
-                    destino_ip VARCHAR(45),
-                    id_usuario INT,
-                    FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
-                    ON DELETE CASCADE
-                    ON UPDATE SET NULL
-                    );''')
 
-        # Traduce el tipo de anomalía y la descripción a inglés para un almacenamiento consistente.
-        # Aquí 'mensaje' es la descripción detallada de la anomalía (ej. "Protocolo inusual: TCP")
-        # El texto original para la DB debe ser siempre el mismo para una traducción consistente.
-        db_tipo_anomalia = translator.translate("Protocolo Inusual", dest='en', src='es').text # Siempre traduce "Protocolo Inusual" de español a inglés
-        db_descripcion = translator.translate(mensaje, dest='en', src='es').text # Traduce el mensaje de la anomalía de español a inglés
-
-        db_severidad = "Mediana" # Ejemplo de severidad
-        db_id_usuario = None # O un ID de usuario específico si se implementa la gestión de usuarios
-
+        # Inserta la anomalía en la tabla, incluyendo el id_usuario
         cursor.execute(
-            "INSERT INTO anomalias (tipo_anomalia, descripcion, severidad, origen_ip, destino_ip, id_usuario) VALUES (%s, %s, %s, %s, %s, %s)",
-            (db_tipo_anomalia, db_descripcion, db_severidad, origen, destino, db_id_usuario)
+            "INSERT INTO anomalias (tipo_anomalia, timestamp, descripcion, severidad, id_usuario) VALUES (%s, %s, %s, %s, %s)",
+            (tipo_anomalia, timestamp, descripcion, severidad, current_user_id)
         )
-        conexion.commit() # Confirma la transacción.
-        print(T("Anomalía guardada: {} de {} a {}", mensaje, origen, destino)) # Usamos T() para traducir el mensaje de confirmación
+        conexion.commit()
+        print(f"[REGISTRO] Anomalía guardada: {tipo_anomalia} - {descripcion}")
+
+
+        notification.notify(
+            title="BGC - Análisis de Red",
+            message=f"Anomalía Detectada\n{tipo_anomalia}: {descripcion}",
+            timeout=10
+        )
+
     except mysql.connector.Error as err:
-        print(T("Error al guardar anomalía en MySQL: {}", err)) # Usamos T() para traducir el mensaje de error
+        print(f"[ERROR] No se pudo guardar la anomalía: {err}")
     finally:
-        # Asegura que la conexión a la base de datos se cierre correctamente.
-        if 'conexion' in locals() and conexion.is_connected():
+        if 'cursor' in locals():
             cursor.close()
+        if 'conexion' in locals() and conexion.is_connected():
             conexion.close()
+
+def detectar_anomalias_con_sql(cursor):
+    """
+    Detecta y registra anomalías usando consultas SQL.
+    """
+    
+    # 1. Detección de anomalías de tiempo con SQL
+    print("Buscando anomalías de tiempo con SQL...")
+    
+    # Consulta SQL para encontrar IPs con muchos paquetes en poco tiempo
+    sql_tiempo = """
+    SELECT src_ip, COUNT(*) AS num_paquetes, TIMESTAMPDIFF(SECOND, MIN(timestamp), MAX(timestamp)) AS duracion_segundos
+    FROM paquetes
+    GROUP BY src_ip
+    HAVING COUNT(*) > 4 AND duracion_segundos < 5;
+    """
+    
+  
+    # Puedes añadir aquí las consultas para 'DIRECCIÓN' y 'PROTOCOLO'
+    # 2. Detección de anomalías de dirección con SQL
+    print("Buscando anomalías de dirección con SQL...")
+    sql_direccion = """
+    SELECT src_ip, COUNT(DISTINCT dst_ip) AS num_destinos_unicos
+    FROM paquetes
+    GROUP BY src_ip
+    HAVING COUNT(DISTINCT dst_ip) > 3;
+    """
+    
+
+    
+    # 3. Detección de anomalías de protocolo con SQL
+    print("Buscando anomalías de protocolo con SQL...")
+    sql_protocolo = """
+    SELECT src_ip, COUNT(DISTINCT protocol) AS num_protocolos
+    FROM paquetes
+    GROUP BY src_ip
+    HAVING COUNT(DISTINCT protocol) > 1;
+    """
+
 
 # --- Network Monitoring Functions ---
 def es_anomalia(pkt):
@@ -238,6 +331,14 @@ def show_frame(frame_name):
     app_frames[frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
     current_active_frame_name = frame_name
 
+    # Si estamos mostrando el historial, recargar los eventos y paquetes
+    if frame_name == "historial":
+        if hasattr(app_frames[frame_name], 'load_events'):
+            app_frames[frame_name].load_events()
+        if hasattr(app_frames[frame_name], 'load_paquetes'):
+            app_frames[frame_name].load_paquetes()
+
+
 def reconstruir_interfaz_actual():
     global current_active_frame_name
     """
@@ -262,8 +363,10 @@ def reconstruir_interfaz_actual():
         elif current_active_frame_name == "configuracion":
             interfaz_configuracion()
 
-        if current_active_frame_name in app_frames:
-            app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
+         # Después de recrear, mostrar el frame nuevamente
+        app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
+        app_frames[current_active_frame_name].grid(column=0, row=0, sticky='nsew', padx=0, pady=0)
+
 
 def actualizar_idioma(nuevo_idioma_seleccionado):
     """
@@ -318,51 +421,77 @@ label_usuc = None
 # --- Interfaz de Inicio de Sesión ---
 def iniciar_sesion():
     """
-    MODIFICADO: Esta función ahora directamente cambia a la interfaz principal de la aplicación
-    y lanza el monitoreo de red, sin validar usuario ni contraseña.
+    Valida el usuario y contraseña contra la tabla `usuario` en la base de datos.
+    Si las credenciales son correctas, cambia a la interfaz principal y guarda el ID del usuario.
     """
+    global current_user_id
+    entered_username = usuario_entry.get()
+    entered_password = contrasenna_entry.get()
 
-    # Inicializar otras interfaces si no están ya en app_frames
-    if "principal" not in app_frames:
-        interfaz_principal()
-    if "usuario" not in app_frames:
-        interfaz_usuario()
-    if "historial" not in app_frames:
-        interfaz_historial()
-    if "soporte" not in app_frames:
-        interfaz_soporte()
-    if "configuracion" not in app_frames:
-        interfaz_configuracion()
+    # Encriptar la contraseña ingresada con SHA256 antes de la comparación.
+    # El método .encode('utf-8') es necesario para convertir la cadena en bytes.
+    hashed_password = hashlib.sha256(entered_password.encode('utf-8')).hexdigest()
 
-    show_frame("principal") # Cambia a la interfaz principal.
-
-    if hasattr(app_frames["principal"], 'notif_frame'):
-        threading.Thread(target=iniciar_monitoreo_red, args=(app_frames["principal"].notif_frame,), daemon=True).start()
-    else:
-        print("Error: notif_frame no encontrado en principal_frame.")
-
-
-def iniciar_monitoreo_red(notif_frame):
-    """
-    Inicia la captura de paquetes de red y el monitoreo de anomalías.
-    Las notificaciones se agregarán al 'notif_frame' en la interfaz principal.
-    """
-    print("Iniciando monitoreo de red...")
     try:
-        capture = pyshark.LiveCapture()
-        
-        for pkt in capture.sniff_continuously():
-            anomalia_info = es_anomalia(pkt)
-            if anomalia_info:
-                mensaje_anomalia, src_ip, dst_ip = anomalia_info
-                root.after(0, agregar_notificacion, notif_frame, f"{T('Anomalía detectada')}: {mensaje_anomalia} ({src_ip} -> {dst_ip})")
-                notificar_usuario(T('Anomalía detectada'), mensaje_anomalia)
-                guardar_anomalia(mensaje_anomalia, src_ip, dst_ip)
+        conexion = mysql.connector.connect(
+            host=AWS_ENDPOINT,
+            user=MYSQL_USER,
+            password=MYSQL_PASSWORD,
+            database=MYSQL_DATABASE
+        )
+        cursor = conexion.cursor()
+        # Asegúrate de que la tabla 'usuario' exista antes de intentar consultarla,
+        # ahora con la columna 'contrasena'.
+        cursor.execute('''CREATE TABLE IF NOT EXISTS usuario (
+                            id_usuario INT PRIMARY KEY,
+                            nombre VARCHAR(50) NOT NULL,
+                            rol VARCHAR(30),
+                            telefono VARCHAR(15),
+                            correo VARCHAR(50) UNIQUE NOT NULL,
+                            contrasena VARCHAR(255) NOT NULL -- Cambiado de password_hash a contrasena
+                        );''')
+        conexion.commit() # Confirmar la creación de la tabla si no existía.
 
-    except Exception as e:
-        print(T("Error durante el monitoreo de red: {}", e))
+         # Consulta para verificar las credenciales, usando la columna 'contrasena'
+        # y la contraseña encriptada.
+        cursor.execute("SELECT id_usuario FROM usuario WHERE id_usuario = %s AND contrasena = %s",
+                       (entered_username, hashed_password))
+        user_data = cursor.fetchone()
 
-# ---------------- INTERFAZ DE PRINCIPAL ------------------------
+        if user_data:
+            current_user_id = user_data[0] # Almacena el ID del usuario.
+            print(f"Inicio de sesión exitoso para el usuario con ID: {current_user_id}")
+            # Inicializa las otras interfaces si no están ya en app_frames
+            if "principal" not in app_frames:
+                interfaz_principal()
+            if "usuario" not in app_frames:
+                interfaz_usuario()
+            if "historial" not in app_frames:
+                interfaz_historial()
+            if "soporte" not in app_frames:
+                interfaz_soporte()
+            if "configuracion" not in app_frames:
+                interfaz_configuracion()
+            show_frame("principal") # Cambia a la interfaz principal.
+
+            threading.Thread(target=iniciar_sniffing, daemon=True).start()
+
+        else:
+            CTkLabel(login_frame, text=T('usuario o contraseña incorrectos'), text_color="red", font=('sans serif', 12)).grid(columnspan=2, row=3, padx=4, pady=4)
+            print("Intento de inicio de sesión fallido.")
+
+    except mysql.connector.Error as err:
+        print(f"Error de base de datos durante el inicio de sesión: {err}")
+        CTkLabel(login_frame, text=f"Error de conexión: {err}", text_color="red", font=('sans serif', 12)).grid(columnspan=2, row=3, padx=4, pady=4)
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conexion' in locals() and conexion.is_connected():
+            conexion.close()
+
+
+
+# ---------------- INTERFAZ PRINCIPAL ------------------------
 def interfaz_principal():
     """
     Define y configura la interfaz principal de la aplicación,
@@ -380,7 +509,7 @@ def interfaz_principal():
     # Menú lateral (Sidebar)
     menu_frame = CTkFrame(principal_frame, fg_color="#1A1A1A", width=150)
     menu_frame.grid(column=0, row=0, sticky='ns') # Se adhiere al norte y sur.
-    
+
     try:
         global label_usup
         if img_act is None:
@@ -394,33 +523,54 @@ def interfaz_principal():
 
     try:
         image = Image.open("Imagenes/perfil.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_usuario = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de usuario:", e))
+        print("Error cargando icono de usuario:", e)
 
     try:
         image = Image.open("Imagenes/historial.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_historial = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de historial:", e))
+        print("Error cargando icono de historial:", e)
 
     try:
         image = Image.open("Imagenes/soporte.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_soporte = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de soporte:", e))
+        print("Error cargando icono de soporte:", e)
 
     try:
         image = Image.open("Imagenes/config2.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_configuracion = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de configuración:", e))
+        print("Error cargando icono de configuración:", e)
 
     try:
         image = Image.open("Imagenes/home.png").resize((15, 15), Image.Resampling.LANCZOS)
-        icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))  
+        icon_home = CTkImage(light_image=image, dark_image=image, size=(15, 15))
     except Exception as e:
-        print(T("Error cargando icono de configuración:", e))
+        print("Error cargando icono de configuración:", e)
+
+
+    # Modificar para mostrar el nombre del usuario logeado
+    user_name_display = "Usuario" # Default
+    if current_user_id:
+        print("ID de usuario actual:", current_user_id)    
+        try:
+            conexion = mysql.connector.connect(host=AWS_ENDPOINT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT nombre FROM usuario WHERE id_usuario = %s", (current_user_id,))
+            result = cursor.fetchone()
+            if result:
+                user_name_display = result[0]
+        except Exception as e:
+            print(f"Error obteniendo nombre de usuario: {e}")
+        finally:
+            if 'cursor' in locals(): cursor.close()
+            if 'conexion' in locals() and conexion.is_connected(): conexion.close()
+
+    
+    CTkLabel(menu_frame, text=user_name_display, font=('sans serif', 20, 'bold')).pack(pady=(20, 10))
 
 # Botones del menú que usan `lambda` para llamar a `show_frame` con el nombre del frame correspondiente.
     CTkButton(menu_frame, text=T('Principal'), image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
@@ -514,7 +664,30 @@ def interfaz_usuario():
         print(T("Error cargando icono de configuración:", e))
 
     label_usupu = CTkLabel(master=sidebar, image=logou_ctk, text="")
-    label_usupu.pack(pady=(10, 0))  # Ajusta el margen según lo que necesites
+    label_usupu.pack(pady=(10, 0))  
+
+    # Modificar para mostrar el nombre del usuario logeado
+    user_name_display = "Usuario" # Default
+    user_email_display = "correo@example.com"
+    user_role_display = "Rol"
+
+    if current_user_id:
+        try:
+            conexion = mysql.connector.connect(host=AWS_ENDPOINT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT nombre, correo, rol FROM usuario WHERE id_usuario = %s", (current_user_id,))
+            result = cursor.fetchone()
+            if result:
+                user_name_display = result[0]
+                user_email_display = result[1]
+                user_role_display = result[2]
+        except Exception as e:
+            print(f"Error obteniendo datos de usuario para la interfaz: {e}")
+        finally:
+            if 'cursor' in locals(): cursor.close()
+            if 'conexion' in locals() and conexion.is_connected(): conexion.close()
+
+    CTkLabel(sidebar, text=user_name_display, font=('sans serif', 20, 'bold')).pack(pady=(20, 10))
 
     # Botones del menú para navegar entre interfaces.
     CTkButton(sidebar, text=T('Principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
@@ -591,11 +764,13 @@ def interfaz_historial():
     """
     global label_usuh, img_act
     historial_frame = CTkFrame(root, fg_color='#010101')
+    historial_frame.actualizar_auto = True
     app_frames["historial"] = historial_frame # Almacena el frame.
     historial_frame.grid_forget() # Lo oculta inicialmente.
 
     # Configuración de la grilla para el frame de historial.
-    historial_frame.columnconfigure(1, weight=1) # Columna de contenido se expande.
+    historial_frame.columnconfigure(1, weight=1) # Columna de contenido de anomalías se expande.
+    historial_frame.columnconfigure(2, weight=1) # Columna de paquetes se expande.
     historial_frame.rowconfigure(0, weight=1) # Fila principal se expande.
 
     # Sidebar (menú lateral) - Se repite por cada interfaz para la navegación.
@@ -644,6 +819,24 @@ def interfaz_historial():
     except Exception as e:
         print(T("Error cargando icono de configuración:", e))
 
+    # Mostrar el nombre del usuario logeado
+    user_name_display = "Usuario" # Default
+    if current_user_id:
+        try:
+            conexion = mysql.connector.connect(host=AWS_ENDPOINT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT nombre FROM usuario WHERE id_usuario = %s", (current_user_id,))
+            result = cursor.fetchone()
+            if result:
+                user_name_display = result[0]
+        except Exception as e:
+            print(f"Error obteniendo nombre de usuario: {e}")
+        finally:
+            if 'cursor' in locals(): cursor.close()
+            if 'conexion' in locals() and conexion.is_connected(): conexion.close()
+
+    CTkLabel(sidebar, text=user_name_display, font=('sans serif', 20, 'bold')).pack(pady=(20, 10))
+
    
     CTkButton(sidebar, text=T('Principal'),image=icon_home ,fg_color="#333333", command=lambda: show_frame("principal")).pack(fill='x', padx=10, pady=5)
     CTkButton(sidebar, text=T('Usuario'), image=icon_usuario, compound="left", fg_color="#333333", command=lambda: show_frame("usuario")).pack(fill='x', padx=10, pady=5)
@@ -657,32 +850,187 @@ def interfaz_historial():
     historial_content_frame.columnconfigure(0, weight=1)
     historial_content_frame.rowconfigure(2, weight=1) # Permite que el scroll_frame se expanda.
 
+    # SEGUNDO PANEL DE LADO DERECHO PARA MOSTRAR PAQUETES
+    paquetes_content_frame = CTkFrame(historial_frame, fg_color="#010101")
+    paquetes_content_frame.grid(row=0, column=2, sticky='nsew', padx=20, pady=20)
+    paquetes_content_frame.columnconfigure(0, weight=1)
+    paquetes_content_frame.rowconfigure(1, weight=1)
+
+    CTkLabel(paquetes_content_frame,
+            text=T('Paquetes en Tiempo Real'),
+            font=('sans serif', 20, 'bold'),
+            text_color='#FFFFFF').grid(row=0, column=0, sticky='w', padx=10, pady=(0, 10))
+
+
+    scroll_paquetes = CTkScrollableFrame(paquetes_content_frame, fg_color="#121212")
+    scroll_paquetes.grid(row=1, column=0, sticky='nsew', padx=10, pady=10)
+    scroll_paquetes.columnconfigure(0, weight=1)
+
     # Título
     CTkLabel(historial_content_frame,
              text=T("Historial de Anomalías"),
              font=('sans serif', 20, 'bold'),
              text_color='#FFFFFF').grid(row=0, column=0, sticky='w', padx=10, pady=(0, 10))
 
-    # Cuadro de búsqueda (funcionalidad no implementada, es solo visual).
-    CTkEntry(historial_content_frame,
-             placeholder_text=T('Buscar...'),
-             font=('sans serif', 12),
-             border_color='#ffffff',
-             fg_color="#3B3B3B",
-             width=300,
-             height=35).grid(row=1, column=0, sticky='w', padx=10, pady=(0, 10))
+   # Cuadro de búsqueda (funcionalidad no implementada, es solo visual).
+    search_var = tk.StringVar()
+    entry_busqueda = CTkEntry(historial_content_frame,
+         textvariable=search_var,
+         placeholder_text=T('Buscar'),
+         font=('sans serif', 12),
+         border_color='#ffffff',
+         fg_color="#3B3B3B",
+         width=300,
+         height=35)
+    entry_busqueda.grid(row=1, column=0, sticky='w', padx=10, pady=(0, 10))
 
-    # Área scrollable para mostrar eventos (idealmente usar CTkScrollableFrame para más items).
-    scroll_frame = CTkFrame(historial_content_frame, fg_color="#121212")
-    scroll_frame.grid(row=2, column=0, sticky='nsew', padx=10, pady=10)
-    scroll_frame.columnconfigure(0, weight=1)
+    def on_search_change(*args):
+        texto = search_var.get().strip()
+        if texto == "":
+            historial_frame.actualizar_auto = True
+            load_events()
+        else:
+            historial_frame.actualizar_auto = False
 
-    def load_events():
+    search_var.trace_add("write", on_search_change)
+
+    def buscar_anomalias():
+        filtro = search_var.get()
+        historial_frame.actualizar_auto = False
+        load_events(filtro)
+
+    entry_busqueda.bind('<Return>', lambda e: buscar_anomalias())
+
+   # Área scrollable para mostrar eventos (idealmente usar CTkScrollableFrame para más items).
+    scroll_anomalias = CTkScrollableFrame(historial_content_frame, fg_color="#121212")
+    scroll_anomalias.grid(row=2, column=0, sticky='nsew', padx=10, pady=10)
+    scroll_anomalias.columnconfigure(0, weight=1)
+
+    def load_events(filtro=""):
         """
-        Carga y muestra los eventos (anomalías) desde la base de datos MySQL.
+        Carga y muestra los eventos (anomalías) desde la tabla 'anomalias' de la base de datos MySQL.
+        Filtra por el id_usuario actual si hay un usuario logeado.
         """
+        print("Intentando cargar eventos de anomalías...") # Mensaje de depuración
         # Limpia las etiquetas existentes en el scroll_frame antes de cargar nuevas.
-        for widget in scroll_frame.winfo_children():
+        for widget in scroll_anomalias.winfo_children():
+            try:
+                widget.destroy()
+            except AttributeError as e:
+                print(f"Error al destruir widget: {e}")
+
+        try:
+            conexion = mysql.connector.connect(
+                host=AWS_ENDPOINT,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE
+            )
+            cursor = conexion.cursor()
+            # Selecciona las últimas 100 anomalías ordenadas por fecha/hora descendente.
+            # Se añade un filtro por id_usuario si current_user_id no es None.
+            if current_user_id:
+                if filtro:
+                    query = """
+                        SELECT tipo_anomalia, timestamp, descripcion, severidad, id_usuario
+                        FROM anomalias
+                        WHERE id_usuario = %s AND (
+                            descripcion LIKE %s OR
+                            severidad LIKE %s OR
+                            tipo_anomalia LIKE %s OR
+                            DATE(timestamp) LIKE %s OR
+                            TIME(timestamp) LIKE %s
+                        )
+                        ORDER BY timestamp DESC LIMIT 100
+                    """
+                    filtro_sql = f"%{filtro}%"
+                    params = [current_user_id, filtro_sql, filtro_sql, filtro_sql, filtro_sql, filtro_sql]  # ← 6 parámetros
+                else:
+                    query = """
+                        SELECT tipo_anomalia, timestamp, descripcion, severidad, id_usuario
+                        FROM anomalias
+                        WHERE id_usuario = %s
+                        ORDER BY timestamp DESC LIMIT 100
+                    """
+                    params = [current_user_id]
+            else:
+                if filtro:
+                    query = """
+                        SELECT tipo_anomalia, timestamp, descripcion, severidad, id_usuario
+                        FROM anomalias
+                        WHERE (
+                            descripcion LIKE %s OR
+                            severidad LIKE %s OR
+                            tipo_anomalia LIKE %s OR
+                            DATE(timestamp) LIKE %s OR
+                            TIME(timestamp) LIKE %s
+                        )
+                        ORDER BY timestamp DESC LIMIT 100
+                    """
+                    filtro_sql = f"%{filtro}%"
+                    params = [filtro_sql, filtro_sql, filtro_sql, filtro_sql, filtro_sql]  # ← 5 parámetros
+                else:
+                    query = """
+                        SELECT tipo_anomalia, timestamp, descripcion, severidad, id_usuario
+                        FROM anomalias
+                        ORDER BY timestamp DESC LIMIT 100
+                    """
+                    params = []        
+            cursor.execute(query,params)
+            anomalias = cursor.fetchall()
+            print(f"Número de anomalías recuperadas: {len(anomalias)}") # Mensaje de depuración
+
+            if not anomalias:
+                CTkLabel(scroll_anomalias,
+                         text=T("No hay anomalias registradas"),
+                         font=('sans serif', 12),
+                         text_color='#DDDDDD').grid(row=0, column=0, sticky='w', pady=10, padx=10)
+                return
+
+            # Muestra cada evento en una etiqueta separada.
+            for idx, (tipo_anomalia, timestamp, descripcion, severidad, id_usuario_anomalia) in enumerate(anomalias):
+                # Formatea el mensaje para la anomalía
+                fecha_formateada = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                anomalia_text = (
+                    f"[{fecha_formateada}] ({tipo_anomalia})\n"
+                    f"Descripción: Anomalía de tipo: ({tipo_anomalia}) {descripcion}\n"
+                    f"Severidad: {severidad}"
+                )
+                # Opcional: Si quieres mostrar el ID de usuario de la anomalía, puedes añadirlo aquí
+                # anomalia_text += f"\nUsuario ID: {id_usuario_anomalia}"
+                CTkLabel(scroll_anomalias,
+                         text=anomalia_text,
+                         font=('sans serif', 12),
+                         text_color='#DDDDDD',
+                         anchor='w',
+                         justify='left',
+                         # Se elimina la propiedad wraplength para evitar AttributeError
+                         ).grid(row=idx, column=0, sticky='w', pady=4, padx=10)
+        except mysql.connector.Error as err:
+            print(f"Error MySQL en load_events: {err}") # Mensaje de depuración
+            CTkLabel(scroll_anomalias,
+                     text=T("Error al cargar historial", err),
+                     font=('sans serif', 12),
+                     text_color='red').grid(row=0, column=0, sticky='w', pady=4, padx=10)
+        finally:
+            # Cierra el cursor y la conexión a la base de datos.
+            if 'cursor' in locals():
+                cursor.close()
+            if 'conexion' in locals() and conexion.is_connected():
+                conexion.close()
+
+    # Asociar la función load_events al frame de historial para que reconstruir_interfaz_actual pueda llamarla.
+    historial_frame.load_events = load_events
+
+    def load_paquetes():
+        """
+        Carga y muestra los paquetes de red desde la tabla 'paquetes' de la base de datos MySQL.
+        Se actualiza periódicamente para simular un monitoreo en tiempo real.
+        Filtra por el id_usuario actual si hay un usuario logeado.
+        """
+        print("Intentando cargar paquetes...") # Mensaje de depuración
+        # Limpia los widgets existentes para evitar duplicados.
+        for widget in scroll_paquetes.winfo_children():
             widget.destroy()
 
         try:
@@ -693,48 +1041,98 @@ def interfaz_historial():
                 database=MYSQL_DATABASE
             )
             cursor = conexion.cursor()
-            # Selecciona las últimas 20 anomalías ordenadas por fecha/hora descendente.
-            cursor.execute("SELECT tipo_anomalia, timestamp, descripcion, severidad, origen_ip, destino_ip FROM anomalias ORDER BY timestamp DESC LIMIT 20")
-            anomalias = cursor.fetchall()
+            # Selecciona los últimos 100 paquetes ordenados por fecha/hora descendente.
+            # Se añade un filtro por id_usuario si current_user_id no es None.
+            if current_user_id:
+                cursor.execute("SELECT id_paquete, timestamp, src_ip, dst_ip, protocol, length, id_usuario FROM paquetes WHERE id_usuario = %s ORDER BY timestamp DESC LIMIT 50;", (current_user_id,))
+            else:
+                # Si no hay usuario logeado, se muestran todos o se puede decidir no mostrar ninguno.
+                cursor.execute("SELECT id_paquete, timestamp, src_ip, dst_ip, protocol, length, id_usuario FROM paquetes ORDER BY timestamp DESC LIMIT 50;")
+            paquetes = cursor.fetchall()
+            print(f"Número de paquetes recuperados: {len(paquetes)}") # Mensaje de depuración
 
-            if not anomalias:
-                CTkLabel(scroll_frame,
-                         text=T("No hay anomalías registradas."), # Texto directo para traducir
+            if not paquetes:
+                CTkLabel(scroll_paquetes,
+                         text="No hay paquetes registrados",
                          font=('sans serif', 12),
                          text_color='#DDDDDD').grid(row=0, column=0, sticky='w', pady=10, padx=10)
                 return
 
-            for idx, (tipo_anomalia_en, timestamp, descripcion_en, severidad, origen_ip, destino_ip) in enumerate(anomalias):
-                # Aquí, como los datos de la DB se guardan en inglés, los traducimos al idioma actual de la GUI
-                tipo_anomalia_traducida = translator.translate(tipo_anomalia_en, dest=idioma_actual, src='en').text
-                descripcion_traducida = translator.translate(descripcion_en, dest=idioma_actual, src='en').text
-
-                CTkLabel(scroll_frame,
-                         text=f"[{timestamp.strftime('%Y-%m-%d %H:%M:%S')}]\n{tipo_anomalia_traducida} → {descripcion_traducida} (Origen: {origen_ip}, Destino: {destino_ip})",
+            for idx, (id_paquete, timestamp, src_ip, dst_ip, protocol, length, id_usuario_paquete) in enumerate(paquetes):
+                # Formatea la información del paquete para mostrarla.
+                CTkLabel(scroll_paquetes,
+                         text=f"[{timestamp.strftime('%H:%M:%S')}] ID:{id_paquete} | {protocol} | {src_ip} → {dst_ip} | {length} bytes",
                          font=('sans serif', 12),
                          text_color='#DDDDDD',
                          anchor='w',
                          justify='left',
-                         wraplength=scroll_frame._current_width - 20
+                         # Se elimina la propiedad wraplength para evitar AttributeError
                          ).grid(row=idx, column=0, sticky='w', pady=4, padx=10)
+
+
         except mysql.connector.Error as err:
-            CTkLabel(scroll_frame,
-                     text=T("Error al cargar historial: {}\nVerifica tus credenciales y endpoint de AWS.", err), # Texto directo para traducir
+            print(f"Error MySQL en load_paquetes: {err}") # Mensaje de depuración
+            CTkLabel(scroll_paquetes,
+                     text=f"Error al cargar paquetes: {err}",
                      font=('sans serif', 12),
                      text_color='red').grid(row=0, column=0, sticky='w', pady=4, padx=10)
         finally:
-            # Cierra el cursor y la conexión a la base de datos.
             if 'cursor' in locals():
                 cursor.close()
             if 'conexion' in locals() and conexion.is_connected():
                 conexion.close()
-    
-    # Asociar la función load_events al frame de historial para que reconstruir_interfaz_actual pueda llamarla.
-    historial_frame.load_events = load_events
 
-    # Carga los eventos cuando se crea la interfaz de historial.
-    # En una aplicación real, esta función podría llamarse cada vez que se muestre el historial.
+        # Programa la próxima actualización de paquetes después de 5 segundos (5000 ms).
+        scroll_paquetes.after(5000, load_paquetes)
+
+    def actualizar_historial_periodicamente():
+        if historial_frame.actualizar_auto and search_var.get().strip() == "":
+            load_events()
+        scroll_anomalias.after(5000, actualizar_historial_periodicamente)
+
+    # Iniciar la actualización periódica del historial
+    actualizar_historial_periodicamente()
+
+    # Asociar la función load_paquetes al frame de historial.
+    historial_frame.load_paquetes = load_paquetes
+
+    # Carga los eventos y paquetes cuando se crea la interfaz de historial.
+    # Estas funciones serán llamadas de nuevo cada vez que se muestre el frame de historial
+    # debido a la lógica en `show_frame`.
     load_events()
+    load_paquetes()
+
+    def eliminar_historial_anomalias():
+        """
+        Elimina todas las anomalías registradas por el usuario logeado
+        de la base de datos y actualiza la interfaz.
+        """
+        global current_user_id
+        try:
+            conexion = mysql.connector.connect(
+                host=AWS_ENDPOINT,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE
+            )
+            cursor = conexion.cursor()
+
+            # Elimina las anomalías del usuario actual
+            cursor.execute("DELETE FROM anomalias WHERE id_usuario = %s", (current_user_id,))
+            conexion.commit()
+
+            print("[INFO] Historial de anomalías eliminado correctamente.")
+
+            if "historial" in app_frames:
+                app_frames["historial"].load_events()
+
+        except mysql.connector.Error as err:
+            print(f"[ERROR] No se pudo eliminar el historial: {err}")
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+            if 'conexion' in locals() and conexion.is_connected():
+                conexion.close()
 
     # Botón para eliminar el historial (funcionalidad pendiente de implementar).
     CTkButton(historial_content_frame,
@@ -748,7 +1146,7 @@ def interfaz_historial():
               border_width=2,
               width=180,
               height=35,
-              command=lambda: print("Funcionalidad de eliminar historial pendiente")).grid(row=3, column=0, sticky='e', padx=10, pady=10)
+              command=eliminar_historial_anomalias).grid(row=3, column=0, sticky='e', padx=10, pady=10)
 
 # --- Interfaz de Soporte ---
 def interfaz_soporte():
