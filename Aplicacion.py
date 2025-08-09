@@ -434,23 +434,26 @@ def interfaz_principal():
     notif_frame.grid(column=1, row=0, sticky='nsew', padx=10, pady=10) # Se expande en todas direcciones.
     notif_frame.columnconfigure(0, weight=1) # La columna del contenido de notificaciones se expande.
 
+    notif_frame.rowconfigure(1, weight=1)
+    notif_frame.columnconfigure(0, weight=1)
+
+    mensaje_bienvenida = T("""¡Bienvenido(a) a BGC!
+Aplicación que ha sido creada para ayudarte a detectar de forma proactiva anomalías en el tráfico de tu red, identificando patrones inusuales en los paquetes, específicamente en su tipo, dirección y tiempo, los cuales podrían afectar el rendimiento o comprometer la seguridad. 
+Con monitoreo en tiempo real y un enfoque inteligente, buscamos fortalecer su estabilidad y protección desde el primer momento.""")
+
+    label_bienvenida = CTkLabel(
+        notif_frame,
+        text=mensaje_bienvenida,
+        wraplength=600,  # Ajusta el ancho máximo del texto antes de que salte línea
+        justify="center",
+        font=("sans serif", 16),
+        text_color="white"
+    )
+    label_bienvenida.grid(row=1, column=0, sticky="nsew", padx=40, pady=20)
+    
     # Almacena el notif_frame directamente como un atributo del principal_frame.
     # Esto facilita su acceso cuando se necesita agregar notificaciones desde el hilo de monitoreo.
     principal_frame.notif_frame = notif_frame
-
-    # Encabezado del panel de notificaciones (título + icono de campana)
-    top_frame = CTkFrame(notif_frame, fg_color="#121212")
-    top_frame.grid(row=0, column=0, sticky='ew', pady=(0, 10))
-    top_frame.columnconfigure(0, weight=1)
-
-    CTkLabel(top_frame, text=T("Notificaciones"), font=("sans serif", 18)).grid(row=0, column=0, sticky='w', padx=10)
-
-    try:
-        bell_icon = Image.open("Imagenes/campana2.png").resize((35, 35))
-        bell_ctk = CTkImage(light_image=bell_icon, dark_image=bell_icon, size=(35, 35))
-        CTkLabel(top_frame, image=bell_ctk, text="").grid(row=0, column=1, sticky='e', padx=10)
-    except Exception as e:
-        print(T("Error al cargar el icono de campana: {}", e))
 
 
 # --- Interfaz de Usuario ---
